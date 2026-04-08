@@ -22,6 +22,129 @@ app.layout = html.Div([
 ])
 
 
+app.clientside_callback(
+    """
+    async function(nClicks, state) {
+        state = state || {recording: false};
+        if (!nClicks) {
+            return [
+                window.dash_clientside.no_update,
+                window.dash_clientside.no_update,
+                window.dash_clientside.no_update
+            ];
+        }
+
+        if (!state.recording) {
+            if (!navigator.mediaDevices || !window.MediaRecorder) {
+                return [
+                    {recording: false},
+                    "Este navegador no soporta grabación de micrófono.",
+                    "🎙 Grabar con micrófono"
+                ];
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+                let mimeType = "";
+                if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+                    mimeType = "audio/ogg;codecs=opus";
+                } else if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+                    mimeType = "audio/webm;codecs=opus";
+                }
+
+                const recorder = mimeType ? new MediaRecorder(stream, {mimeType}) : new MediaRecorder(stream);
+                const chunks = [];
+                const startedAt = Date.now();
+
+                recorder.ondataavailable = (event) => {
+                    if (event.data && event.data.size > 0) {
+                        chunks.push(event.data);
+                    }
+                };
+
+                const finished = new Promise((resolve, reject) => {
+                    recorder.onstop = () => {
+                        try {
+                            const effectiveType = recorder.mimeType || mimeType || "audio/webm";
+                            const extension = effectiveType.includes("ogg") ? "ogg" : "webm";
+                            const blob = new Blob(chunks, {type: effectiveType});
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve({
+                                recording: false,
+                                startedAt,
+                                durationMs: Date.now() - startedAt,
+                                audio: {
+                                    contents: reader.result,
+                                    filename: `grabacion-${Date.now()}.${extension}`
+                                }
+                            });
+                            reader.onerror = () => reject(reader.error || new Error("No se pudo leer el audio."));
+                            reader.readAsDataURL(blob);
+                        } catch (error) {
+                            reject(error);
+                        }
+                    };
+
+                    recorder.onerror = (event) => {
+                        reject(event.error || new Error("Error de grabación."));
+                    };
+                });
+
+                window.__signalcdmxRecorder = {recorder, stream, finished};
+                recorder.start();
+                return [
+                    {recording: true, startedAt},
+                    "⏺ Grabando... pulsa otra vez para detener.",
+                    "⏹ Detener grabación"
+                ];
+            } catch (error) {
+                return [
+                    {recording: false},
+                    `No se pudo acceder al micrófono: ${error.message}`,
+                    "🎙 Grabar con micrófono"
+                ];
+            }
+        }
+
+        const active = window.__signalcdmxRecorder;
+        if (!active) {
+            return [
+                {recording: false},
+                "No hay una grabación activa.",
+                "🎙 Grabar con micrófono"
+            ];
+        }
+
+        try {
+            active.recorder.stop();
+            active.stream.getTracks().forEach((track) => track.stop());
+            const result = await active.finished;
+            window.__signalcdmxRecorder = null;
+            const secs = Math.max(1, Math.round((result.durationMs || 0) / 1000));
+            return [
+                result,
+                `✅ Audio capturado (${secs}s). Enviando a IBM Speech to Text...`,
+                "🎙 Grabar con micrófono"
+            ];
+        } catch (error) {
+            window.__signalcdmxRecorder = null;
+            return [
+                {recording: false},
+                `No se pudo finalizar la grabación: ${error.message}`,
+                "🎙 Grabar con micrófono"
+            ];
+        }
+    }
+    """,
+    Output("mic-record-store", "data"),
+    Output("mic-status", "children"),
+    Output("mic-btn", "children"),
+    Input("mic-btn", "n_clicks"),
+    State("mic-record-store", "data"),
+    prevent_initial_call=True,
+)
+
+
 # Router
 
 @callback(

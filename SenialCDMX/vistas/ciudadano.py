@@ -1,11 +1,53 @@
 """Vista raíz del ciudadano."""
 import dash
-from dash import html, dcc, Input, Output, State, callback, ctx
-import dash
-from dash import html, dcc, Input, Output, State, callback, clientside_callback
+from dash import html, dcc, Input, Output, State, callback, ctx, clientside_callback
 from componentes.navegacion import navbar
+from extra.ibm_speech import transcribe_audio
 from vistas.nuevo_reporte import layout_nuevo
 from vistas.mis_reportes import layout_mis
+
+
+def _pdf_literal(text: str) -> str:
+    clean = text.encode("ascii", "ignore").decode("ascii")
+    clean = clean.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    return f"({clean})"
+
+
+def _build_simple_pdf(lines: list[str]) -> bytes:
+    text_lines = [line for line in lines if line]
+    if not text_lines:
+        text_lines = ["SeñalCDMX"]
+
+    content_parts = ["BT", "/F1 11 Tf", "50 800 Td", "14 TL", f"{_pdf_literal(text_lines[0])} Tj"]
+    for line in text_lines[1:]:
+        content_parts.extend(["T*", f"{_pdf_literal(line)} Tj"])
+    content_parts.append("ET")
+    content_stream = "\n".join(content_parts).encode("ascii")
+
+    objects = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
+        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+        b"5 0 obj << /Length " + str(len(content_stream)).encode("ascii") + b" >> stream\n" + content_stream + b"\nendstream endobj\n",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+
+    xref_pos = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        f"trailer << /Root 1 0 R /Size {len(objects) + 1} >>\n"
+        f"startxref\n{xref_pos}\n%%EOF\n".encode("ascii")
+    )
+    return bytes(pdf)
 
 
 def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
@@ -19,7 +61,7 @@ def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     ])
 
 
-# Navegación entre paneles 
+# ── Navegación entre paneles ──────────────────────────────────────────────────
 
 @callback(
     Output("panel-ciudadano-nuevo", "style"),
@@ -28,7 +70,10 @@ def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     Output("tab-mis",   "className"),
     Input("tab-nuevo",    "n_clicks"),
     Input("tab-mis",      "n_clicks"),
-    Input("btn-ir-nuevo", "n_clicks"),
+    Input("btn-nuevo-reporte", "n_clicks", allow_optional=True),
+    Input("btn-ver-mis", "n_clicks", allow_optional=True),
+    State("panel-ciudadano-nuevo", "style"),
+    State("panel-ciudadano-mis", "style"),
     prevent_initial_call=True,
 )
 def switch_panel(n_nuevo, n_mis, n_ir_nuevo):
@@ -104,8 +149,8 @@ clientside_callback(
     prevent_initial_call=False,
 )
 
+# ── Tabs texto / audio ────────────────────────────────────────────────────────
 
-# Tabs texto / audio 
 @callback(
     Output("tab-content-texto", "style"),
     Output("tab-content-audio", "style"),
@@ -123,42 +168,70 @@ def switch_input_tab(n_texto, n_audio):
     return show, hide, active, normal
 
 
-#  Grabación simulada (solo clicks, sin Interval) 
+# ── Transcripción IBM Speech to Text ─────────────────────────────────────────
+
 @callback(
-    Output("audio-btn",             "className"),
-    Output("audio-btn",             "children"),
     Output("audio-status",          "children"),
     Output("audio-timer",           "children"),
     Output("audio-transcript-wrap", "style"),
     Output("audio-transcript",      "children"),
-    Output("store-grabando",        "data"),
-    Input("audio-btn",      "n_clicks"),
-    State("store-grabando", "data"),
+    Input("upload-audio", "contents"),
+    Input("mic-record-store", "data"),
+    State("upload-audio", "filename"),
+    State("mic-record-store", "data"),
     prevent_initial_call=True,
 )
-def toggle_audio(n_clicks, grabando):
-    TRANSCRIPCION = (
-        "Hay un bache muy profundo en la esquina de Insurgentes y Viaducto, "
-        "justo frente a la farmacia. Lleva semanas sin atención y ya dañó "
-        "la llanta de mi carro. Es urgente que lo reparen."
+def transcribir_audio_upload(upload_contents, mic_store, upload_filename, mic_store_state):
+    triggered = ctx.triggered_id
+    audio_contents = None
+    audio_filename = None
+
+    if triggered == "upload-audio" and upload_contents:
+        audio_contents = upload_contents
+        audio_filename = upload_filename
+    elif triggered == "mic-record-store" and isinstance(mic_store_state, dict):
+        audio_payload = mic_store_state.get("audio")
+        if audio_payload:
+            audio_contents = audio_payload.get("contents")
+            audio_filename = audio_payload.get("filename")
+        elif mic_store_state.get("recording"):
+            return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if not audio_contents:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    try:
+        transcript = transcribe_audio(audio_contents, audio_filename)
+    except Exception as exc:
+        return (
+            f"No se pudo transcribir el audio: {exc}",
+            "",
+            {"display": "none"},
+            "",
+        )
+
+    if not transcript:
+        transcript = "IBM Speech to Text no devolvió texto reconocible para este audio."
+
+    label = audio_filename or ("micrófono" if triggered == "mic-record-store" else "audio cargado")
+    return (
+        f"Transcripción completada desde {label}",
+        "IBM STT · es-LA_Telephony",
+        {},
+        transcript,
     )
-    if not grabando:
-        return "audio-btn recording", "Detener", \
-               "Grabando… presiona para detener", "● REC", \
-               {"display": "none"}, "", True
-    else:
-        return "audio-btn", "Grabar", \
-               "Audio procesado correctamente", "0:08", \
-               {}, TRANSCRIPCION, False
 
 
-#  Navegación del formulario de pasos 
+# ── Navegación del formulario de pasos ────────────────────────────────────────
+
 @callback(
     Output("form-step-1", "style"),
     Output("form-step-2", "style"),
     Output("form-step-3", "style"),
     Output("form-step-4", "style"),
     Output("store-paso-actual", "data"),
+    Input("tab-nuevo",        "n_clicks"),
+    Input("btn-nuevo-reporte", "n_clicks", allow_optional=True),
     Input("btn-paso-2",        "n_clicks"),
     Input("btn-paso-1-back",   "n_clicks"),
     Input("btn-paso-3",        "n_clicks"),
@@ -166,9 +239,11 @@ def toggle_audio(n_clicks, grabando):
     State("store-paso-actual", "data"),
     prevent_initial_call=True,
 )
-def navegar_pasos(n2, n1back, n3, n_intervals, paso):
+def navegar_pasos(n_tab_nuevo, n_btn_nuevo, n2, n1back, n3, n_intervals, paso):
     show, hide = {}, {"display": "none"}
     t = ctx.triggered_id
+    if t in {"tab-nuevo", "btn-nuevo-reporte"}:
+        paso = 1
     if   t == "btn-paso-2"    and paso == 1: paso = 2
     elif t == "btn-paso-1-back" and paso == 2: paso = 1
     elif t == "btn-paso-3"    and paso == 2: paso = 3
@@ -181,8 +256,6 @@ def navegar_pasos(n2, n1back, n3, n_intervals, paso):
         paso,
     )
 
-
-# ── Intervalo IA ──────────────────────────────────────────────────────────────
 
 @callback(
     Output("ai-interval", "disabled"),
@@ -207,7 +280,8 @@ def update_ai_steps(n):
     ]
 
 
-#  Galería de capturas 
+# ── Galería de capturas ───────────────────────────────────────────────────────
+
 @callback(
     Output("capturas-galeria",  "children"),
     Output("capturas-contador", "children"),
@@ -229,7 +303,7 @@ def agregar_capturas(contents_list, filenames, capturas_actuales):
         html.Div([
             html.Img(src=cap["content"],
                      style={"width": "100%", "height": "100%", "objectFit": "cover"}),
-            html.Span(" Pendiente", className="badge badge-pendiente captura-badge"),
+            html.Span("⏳ Pendiente", className="badge badge-pendiente captura-badge"),
         ], className="captura-thumb pendiente", title=cap["filename"])
         for cap in capturas
     ]
@@ -239,9 +313,6 @@ def agregar_capturas(contents_list, filenames, capturas_actuales):
         f"{total} captura{'s' if total != 1 else ''} adjunta{'s' if total != 1 else ''} · se procesarán al enviar",
         capturas,
     )
-
-
-#  Step indicator ──────────────────────────────────────────────────────────────
 
 @callback(
     Output("step-indicator", "children"),
@@ -273,20 +344,36 @@ def actualizar_step_indicator(paso):
     ]
 
 
-#  Resultado de IA 
+# ── Resultado de IA ───────────────────────────────────────────────────────────
 
 @callback(
     Output("result-card", "children"),
+    Output("store-ai-result", "data"),
     Input("store-paso-actual", "data"),
     State("store-capturas",    "data"),
     prevent_initial_call=True,
 )
 def mostrar_resultado(paso, capturas):
     if paso != 4:
-        return []
+        return [], None
     import random
     rpt_id = f"RPT-{random.randint(100, 999)}"
     n_cap = len(capturas) if capturas else 0
+    result_data = {
+        "report_id": rpt_id,
+        "capturas": n_cap,
+        "categoria": "Infraestructura",
+        "tipo": "Bache vial",
+        "prioridad": "Alta",
+        "confianza": "89%",
+        "descripcion": (
+            "El reporte describe una afectacion vial de alta peligrosidad. "
+            "La zona registra densidad vehicular elevada."
+        ),
+        "recomendacion": (
+            "Se recomienda enviar brigada de mantenimiento en las proximas 48 horas."
+        ),
+    }
     return [
         html.Div([
             html.Div([
@@ -345,7 +432,7 @@ def mostrar_resultado(paso, capturas):
                             "color": "var(--primary)", "marginBottom": "4px"}),
             html.Div(f"{rpt_id}_reporte_tecnico.pdf", className="text-small",
                      style={"marginBottom": "10px"}),
-            html.Button("↓ Descargar PDF", className="btn btn-sm btn-outline",
+            html.Button("↓ Descargar PDF", id="btn-descargar-pdf", className="btn btn-sm btn-outline",
                         style={"color": "var(--primary)", "borderColor": "var(--primary)"}),
         ], style={"background": "var(--primary-light)", "border": "1px solid rgba(15,143,74,0.2)",
                   "borderRadius": "var(--radius-sm)", "padding": "16px", "marginBottom": "16px"}),
@@ -357,4 +444,35 @@ def mostrar_resultado(paso, capturas):
                         className="btn btn-primary", n_clicks=0),
         ], style={"display": "flex", "gap": "8px", "justifyContent": "flex-end",
                   "paddingTop": "16px", "borderTop": "1px solid var(--border)"}),
+    ], result_data
+
+
+@callback(
+    Output("download-reporte-pdf", "data"),
+    Input("btn-descargar-pdf", "n_clicks"),
+    State("store-ai-result", "data"),
+    prevent_initial_call=True,
+)
+def descargar_reporte_pdf(n_clicks, reporte):
+    if not reporte:
+        return dash.no_update
+
+    lines = [
+        "SeñalCDMX - Reporte tecnico",
+        f"ID: {reporte.get('report_id', 'N/A')}",
+        f"Prioridad: {reporte.get('prioridad', 'N/A')}",
+        f"Categoria: {reporte.get('categoria', 'N/A')}",
+        f"Tipo: {reporte.get('tipo', 'N/A')}",
+        f"Confianza IA: {reporte.get('confianza', 'N/A')}",
+        f"Capturas procesadas: {reporte.get('capturas', 0)}",
+        "",
+        "Resumen del sistema:",
+        reporte.get("descripcion", ""),
+        "",
+        "Recomendacion:",
+        reporte.get("recomendacion", ""),
     ]
+    pdf_bytes = _build_simple_pdf(lines)
+    filename = f"{reporte.get('report_id', 'reporte')}_reporte_tecnico.pdf"
+
+    return dcc.send_bytes(lambda buffer: buffer.write(pdf_bytes), filename)

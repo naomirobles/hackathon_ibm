@@ -1,11 +1,13 @@
-"""Vista: formulario de nuevo reporte ciudadano (4 pasos) con mapa Leaflet interactivo."""
+"""Vista: formulario de nuevo reporte ciudadano (4 pasos) con Google Maps."""
 from dash import html, dcc
 import urllib.parse
+
+
+GMAPS_KEY = "API_KEY_AQUI"
 
 # Coordenadas default: Col. del Valle, CDMX
 DEFAULT_LAT = 19.3720
 DEFAULT_LON = -99.1726
-
 
 def _mapa_leaflet(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON,
                   height: int = 320) -> html.Div:
@@ -140,51 +142,71 @@ def layout_nuevo() -> html.Div:
 
                 # Pestaña audio
                 html.Div(id="tab-content-audio", className="tab-content",
-                        style={"display": "none"}, children=[
+                         style={"display": "none"}, children=[
                     html.Div([
                         html.Div([
-                            html.Button(
-                                html.Span("¡", style={"fontSize": "22px"}),
-                                id="audio-btn", className="audio-btn", n_clicks=0,
+                            html.Div("Transcribe un audio con IBM Speech to Text",
+                                     style={"fontWeight": "600", "marginBottom": "4px"}),
+                            html.Div(
+                                "Puedes grabar desde el micrófono o subir un archivo. "
+                                "Se recomienda WAV, MP3 o M4A.",
+                                className="text-small",
                             ),
-                            html.Div([
-                                html.Div("Presiona para grabar", id="audio-status",
-                                        style={"fontSize": "13px", "fontWeight": "500"}),
-                                html.Div("0:00", id="audio-timer",
-                                        className="text-small",
-                                        style={"marginTop": "2px"}),
-                            ], style={"flex": "1"}),
                         ], style={
                             "background": "var(--bg)", "borderRadius": "var(--radius-sm)",
-                            "padding": "20px", "display": "flex",
-                            "alignItems": "center", "gap": "16px", "marginBottom": "16px",
+                            "padding": "16px", "marginBottom": "12px",
                         }),
-
+                        html.Div([
+                            html.Button(
+                                "🎙 Grabar con micrófono",
+                                id="mic-btn",
+                                className="btn btn-primary w-full",
+                                n_clicks=0,
+                            ),
+                            html.Div(
+                                "Haz clic una vez para empezar y otra para detener.",
+                                className="text-small",
+                                style={"marginTop": "6px"},
+                            ),
+                            html.Div(id="mic-status", className="text-small",
+                                     style={"marginTop": "8px", "color": "var(--text2)"}),
+                            dcc.Store(id="mic-record-store", data={"recording": False}),
+                        ], style={"marginBottom": "16px"}),
+                        dcc.Upload(
+                            id="upload-audio",
+                            children=html.Div([
+                                html.Div("🎧", className="upload-icon"),
+                                html.Div([
+                                    html.Strong("Seleccionar audio"),
+                                    " o arrastrarlo aquí",
+                                ], className="upload-text"),
+                                html.Div("IBM STT · es-LA_Telephony · máximo recomendado 25 MB",
+                                         className="text-small"),
+                            ]),
+                            className="upload-area",
+                            accept="audio/*",
+                            multiple=False,
+                        ),
+                        html.Div(id="audio-status", className="text-small",
+                                 style={"marginTop": "10px", "color": "var(--text2)"}),
+                        html.Div(id="audio-timer", className="text-small",
+                                 style={"marginTop": "4px", "color": "var(--text3)"}),
                         html.Div([
                             html.Span("ℹ", style={"fontSize": "14px"}),
-                            html.Div("Demo: Al detener la grabación se simulará la transcripción."),
+                            html.Div(
+                                "El texto final aparecerá abajo cuando IBM devuelva la transcripción."
+                            ),
                         ], className="alert alert-info", style={"fontSize": "12px"}),
-
-                        html.Div(
-                            id="audio-transcript-wrap",
-                            style={"display": "none"},
-                            children=[
-                                html.Label("Transcripción", className="form-label"),
-
-                                html.Div(
-                                    id="audio-transcript",
-                                    style={
-                                        "background": "var(--bg)",
-                                        "padding": "12px",
-                                        "borderRadius": "6px",
-                                        "marginTop": "8px",
-                                        "whiteSpace": "pre-wrap",
-                                        "minHeight": "80px"
-                                    }
-                                )
-                            ]
-                        ),
                     ]),
+                ]),
+
+                html.Div(id="audio-transcript-wrap", style={"display": "none"}, children=[
+                    html.Label("Transcripción", className="form-label"),
+                    html.Div(
+                        id="audio-transcript",
+                        className="form-textarea",
+                        style={"minHeight": "96px", "whiteSpace": "pre-wrap"},
+                    ),
                 ]),
 
                 html.Hr(className="divider"),
@@ -240,8 +262,7 @@ def layout_nuevo() -> html.Div:
             ])
         ]),
 
-        # PASO 2: Ubicación 
-        html.Div(id="form-step-2", style={"display": "none"}, children=[
+html.Div(id="form-step-2", style={"display": "none"}, children=[
             html.Div(className="card", children=[
                 html.Div("Ubicación del problema", className="card-title"),
                 html.Div("Haz clic en el mapa o arrastra el pin para seleccionar la ubicación exacta",
@@ -292,6 +313,7 @@ def layout_nuevo() -> html.Div:
             ])
         ]),
 
+
         # PASO 3: Procesando IA 
         html.Div(id="form-step-3", style={"display": "none"}, children=[
             html.Div(className="card", children=[
@@ -341,6 +363,6 @@ def layout_nuevo() -> html.Div:
         ]),
 
         dcc.Store(id="store-ai-result"),
+        dcc.Download(id="download-reporte-pdf"),
         dcc.Store(id="store-paso-actual", data=1),
-        dcc.Store(id="store-grabando", data=False),
     ])
