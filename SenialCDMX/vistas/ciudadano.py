@@ -1,5 +1,5 @@
-"""Vista raíz del ciudadano: navbar + contenido con navegación interna."""
-from dash import html, dcc, Input, Output, callback
+import dash
+from dash import html, dcc, Input, Output, State, callback, clientside_callback
 from componentes.navegacion import navbar
 from vistas.nuevo_reporte import layout_nuevo
 from vistas.mis_reportes import layout_mis
@@ -8,20 +8,16 @@ from vistas.mis_reportes import layout_mis
 def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     return html.Div([
         navbar(role="ciudadano", usuario=usuario),
-
         html.Div(className="main", children=[
-            # Panel: Nuevo reporte (activo por defecto)
             html.Div(layout_nuevo(), id="panel-ciudadano-nuevo",
                      className="panel active"),
-
-            # Panel: Mis reportes
             html.Div(layout_mis(), id="panel-ciudadano-mis",
                      className="panel", style={"display": "none"}),
         ]),
     ])
 
 
-# Callbacks de navegación ciudadano
+# ── Navegación entre paneles ──────────────────────────────────────────────────
 
 @callback(
     Output("panel-ciudadano-nuevo", "style"),
@@ -33,22 +29,13 @@ def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     prevent_initial_call=True,
 )
 def switch_panel_ciudadano(n_nuevo, n_mis):
-    from dash import ctx
-    triggered = ctx.triggered_id
-
+    triggered = dash.ctx.triggered_id
     if triggered == "tab-mis":
-        return (
-            {"display": "none"}, {},
-            "nav-tab", "nav-tab active",
-        )
-    # default: nuevo
-    return (
-        {}, {"display": "none"},
-        "nav-tab active", "nav-tab",
-    )
+        return {"display": "none"}, {}, "nav-tab", "nav-tab active"
+    return {}, {"display": "none"}, "nav-tab active", "nav-tab"
 
 
-# Callbacks del formulario de nuevo reporte
+# ── Step indicator ────────────────────────────────────────────────────────────
 
 @callback(
     Output("step-indicator", "children"),
@@ -56,14 +43,10 @@ def switch_panel_ciudadano(n_nuevo, n_mis):
 )
 def actualizar_step_indicator(paso):
     from vistas.nuevo_reporte import _step
-
     def estado(num):
-        if num < paso:
-            return "done"
-        if num == paso:
-            return "active"
+        if num < paso:  return "done"
+        if num == paso: return "active"
         return ""
-
     return [
         _step(1, "Descripción", estado(1)),
         _step(2, "Ubicación",   estado(2)),
@@ -72,36 +55,29 @@ def actualizar_step_indicator(paso):
     ]
 
 
+# ── Navegación entre pasos del formulario ────────────────────────────────────
+
 @callback(
     Output("form-step-1", "style"),
     Output("form-step-2", "style"),
     Output("form-step-3", "style"),
     Output("form-step-4", "style"),
     Output("store-paso-actual", "data"),
-    Input("btn-paso-2",      "n_clicks"),
-    Input("btn-paso-1-back", "n_clicks"),
-    Input("btn-paso-3",      "n_clicks"),
-    Input("ai-interval",     "n_intervals"),
+    Input("btn-paso-2",        "n_clicks"),
+    Input("btn-paso-1-back",   "n_clicks"),
+    Input("btn-paso-3",        "n_clicks"),
+    Input("ai-interval",       "n_intervals"),
     Input("store-paso-actual", "data"),
     prevent_initial_call=True,
 )
 def navegar_pasos(n2, n1back, n3, n_intervals, paso_actual):
-    from dash import ctx
-    triggered = ctx.triggered_id
-    show  = {}
-    hide  = {"display": "none"}
-
-    if triggered == "btn-paso-2" and paso_actual == 1:
-        paso = 2
-    elif triggered == "btn-paso-1-back" and paso_actual == 2:
-        paso = 1
-    elif triggered == "btn-paso-3" and paso_actual == 2:
-        paso = 3
-    elif triggered == "ai-interval" and n_intervals >= 7 and paso_actual == 3:
-        paso = 4
-    else:
-        paso = paso_actual
-
+    triggered = dash.ctx.triggered_id
+    show, hide = {}, {"display": "none"}
+    if triggered == "btn-paso-2"      and paso_actual == 1: paso = 2
+    elif triggered == "btn-paso-1-back" and paso_actual == 2: paso = 1
+    elif triggered == "btn-paso-3"    and paso_actual == 2: paso = 3
+    elif triggered == "ai-interval"   and n_intervals >= 7 and paso_actual == 3: paso = 4
+    else: paso = paso_actual
     return (
         show if paso == 1 else hide,
         show if paso == 2 else hide,
@@ -110,6 +86,8 @@ def navegar_pasos(n2, n1back, n3, n_intervals, paso_actual):
         paso,
     )
 
+
+# ── Intervalo IA ──────────────────────────────────────────────────────────────
 
 @callback(
     Output("ai-interval", "disabled"),
@@ -127,30 +105,88 @@ def toggle_interval(paso):
     Input("ai-interval", "n_intervals"),
 )
 def update_ai_steps(n):
-    clases = []
-    for i in range(7):
-        if i < n:
-            clases.append("ai-step done")
-        elif i == n:
-            clases.append("ai-step active")
-        else:
-            clases.append("ai-step")
-    return clases
+    return [
+        "ai-step done" if i < n else ("ai-step active" if i == n else "ai-step")
+        for i in range(7)
+    ]
 
+
+# ── Mapa: clientside_callback → postMessage del iframe → Store ───────────────
+# Cada 300ms verifica si el iframe envió coordenadas nuevas via postMessage
+
+clientside_callback(
+    """
+    function(_) {
+        if (!window.__mapListenerSet) {
+            window.__mapListenerSet = true;
+            window.__mapCoords = null;
+            window.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'MAP_CLICK') {
+                    window.__mapCoords = { lat: e.data.lat, lng: e.data.lng };
+                }
+            });
+        }
+        if (window.__mapCoords) {
+            var c = window.__mapCoords;
+            window.__mapCoords = null;
+            return c;
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("store-mapa-coords", "data"),
+    Input("mapa-poll-interval", "n_intervals"),
+    prevent_initial_call=True,
+)
+
+
+# ── Mapa: Store → lat / lon / dirección (reverse geocoding Nominatim) ─────────
+
+@callback(
+    Output("lat-input",  "value"),
+    Output("lon-input",  "value"),
+    Output("dir-input",  "value"),
+    Output("dir-status", "children"),
+    Input("store-mapa-coords", "data"),
+    prevent_initial_call=True,
+)
+def actualizar_ubicacion(coords):
+    if not coords:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    lat = round(coords["lat"], 6)
+    lng = round(coords["lng"], 6)
+
+    import requests
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"format": "jsonv2", "lat": lat, "lon": lng},
+            headers={"User-Agent": "SenialCDMX/1.0"},
+            timeout=5,
+        )
+        data = resp.json()
+        direccion = data.get("display_name", f"{lat}, {lng}")
+        status = "✓ Dirección obtenida automáticamente"
+    except Exception:
+        direccion = f"{lat}, {lng}"
+        status = "⚠ Sin conexión — mostrando coordenadas"
+
+    return str(lat), str(lng), direccion, status
+
+
+# ── Resultado del reporte ─────────────────────────────────────────────────────
 
 @callback(
     Output("result-card", "children"),
     Input("store-paso-actual", "data"),
     prevent_initial_call=True,
 )
-
 def mostrar_resultado(paso):
     if paso != 4:
         return []
-
     import random
     rpt_id = f"RPT-{random.randint(100, 999)}"
-
     return [
         html.Div([
             html.Div([
@@ -163,10 +199,8 @@ def mostrar_resultado(paso):
                     html.Span("Bache vial",      className="badge badge-info"),
                 ], style={"display": "flex", "gap": "8px",
                           "flexWrap": "wrap", "marginBottom": "8px"}),
-                html.Div(
-                    f"ID: {rpt_id} · Confianza IA: 89% · Hoy",
-                    className="text-small",
-                ),
+                html.Div(f"ID: {rpt_id} · Confianza IA: 89% · Hoy",
+                         className="text-small"),
             ]),
             html.Div([
                 html.Div("87%", className="priority-pct alta"),
@@ -183,7 +217,7 @@ def mostrar_resultado(paso):
 
         html.Div([
             html.Div([
-                html.Div("Categoría",    className="info-item-label"),
+                html.Div("Categoría",       className="info-item-label"),
                 html.Div("Infraestructura", className="info-item-value"),
             ], className="info-item"),
             html.Div([
@@ -220,4 +254,5 @@ def mostrar_resultado(paso):
             "borderRadius": "var(--radius-sm)",
             "padding": "16px",
             "marginBottom": "16px",
-        })]
+        }),
+    ]
