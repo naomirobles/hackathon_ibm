@@ -51,6 +51,28 @@ def switch_panel_ciudadano(n_nuevo, n_mis):
 # Callbacks del formulario de nuevo reporte
 
 @callback(
+    Output("step-indicator", "children"),
+    Input("store-paso-actual", "data"),
+)
+def actualizar_step_indicator(paso):
+    from vistas.nuevo_reporte import _step
+
+    def estado(num):
+        if num < paso:
+            return "done"
+        if num == paso:
+            return "active"
+        return ""
+
+    return [
+        _step(1, "Descripción", estado(1)),
+        _step(2, "Ubicación",   estado(2)),
+        _step(3, "Análisis IA", estado(3)),
+        _step(4, "Resultado",   estado(4)),
+    ]
+
+
+@callback(
     Output("form-step-1", "style"),
     Output("form-step-2", "style"),
     Output("form-step-3", "style"),
