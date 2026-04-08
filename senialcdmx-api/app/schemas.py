@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 # ── Request: lo que envía el frontend ─────────────────────────────────────────
@@ -9,7 +9,6 @@ class ReportCreate(BaseModel):
     descripcion: str
     descripcion_audio: str | None = None
 
-    # Ubicación — el frontend puede enviar coords del mapa o dirección libre
     direccion_aprox: str | None = None
     alcaldia: str | None = None
     colonia: str | None = None
@@ -19,13 +18,13 @@ class ReportCreate(BaseModel):
 
     fuente_input: str = "web"
     tiene_imagen: bool = False
-    usuario_id: str | None = None   # UUID del usuario autenticado, opcional
+    usuario_id: str | None = None   # UUID del usuario autenticado; None = anónimo
 
 
 # ── Response: POST /reports ────────────────────────────────────────────────────
 
 class ReportCreatedResponse(BaseModel):
-    report_id: int
+    report_id: str      # UUID
     codigo: str
     status: str
 
@@ -47,7 +46,7 @@ class ProcesamientoIAResponse(BaseModel):
 
 
 class ReportResponse(BaseModel):
-    report_id: int
+    report_id: str      # UUID
     codigo: str | None = None
     status: str
     latitud: float | None = None
@@ -56,7 +55,6 @@ class ReportResponse(BaseModel):
     colonia: str | None = None
     created_at: datetime | None = None
 
-    # Resultados del pipeline (null mientras status == "processing")
     ia: ProcesamientoIAResponse | None = None
 
     class Config:
@@ -66,7 +64,7 @@ class ReportResponse(BaseModel):
 # ── Response: GET /reports (lista) ────────────────────────────────────────────
 
 class ReportListItem(BaseModel):
-    report_id: int
+    report_id: str      # UUID
     codigo: str | None = None
     status: str
     categoria: str | None = None

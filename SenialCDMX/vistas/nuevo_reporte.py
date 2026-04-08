@@ -1,43 +1,80 @@
-"""Vista: formulario de nuevo reporte ciudadano (4 pasos) con Google Maps."""
+"""Vista: formulario de nuevo reporte ciudadano (4 pasos) con mapa Leaflet interactivo."""
 from dash import html, dcc
-
-GMAPS_KEY = "API_KEY_AQUI"
+import urllib.parse
 
 # Coordenadas default: Col. del Valle, CDMX
 DEFAULT_LAT = 19.3720
 DEFAULT_LON = -99.1726
 
 
-def _mapa_google(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON,
-                 height: int = 220, zoom: int = 15) -> html.Div:
+def _mapa_leaflet(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON,
+                  height: int = 320) -> html.Div:
     """
-    Mapa embebido de Google Maps vía iframe.
+    Mapa interactivo con Leaflet.js embebido en un iframe.
+    El usuario hace clic para colocar/mover el pin.
+    La posición se comunica al padre vía postMessage → dcc.Store.
+    """
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html,body,#map{{margin:0;padding:0;height:100%;width:100%;}}
+  .leaflet-control-attribution{{font-size:9px;}}
+  #crosshair{{
+    position:absolute;top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    pointer-events:none;z-index:1000;
+    font-size:28px;line-height:1;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
+  }}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var map = L.map('map').setView([{lat}, {lon}], 15);
+  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{
+    attribution:'© OpenStreetMap contributors'
+  }}).addTo(map);
 
-    Cuando tengas tu API Key real, cambia GMAPS_KEY arriba y el iframe
-    mostrará el mapa interactivo completo con pin arrastrable.
-    """
-    if GMAPS_KEY and GMAPS_KEY != "API_KEY_AQUI":
-        src = (
-            f"https://www.google.com/maps/embed/v1/place"
-            f"?key={GMAPS_KEY}"
-            f"&q={lat},{lon}"
-            f"&zoom={zoom}"
-            f"&maptype=roadmap"
-        )
-        mapa = html.Iframe(src=src, style={"height": f"{height}px"})
-    else:
-        # Fallback sin key: enlace estático de OpenStreetMap
-        src = (
-            f"https://www.openstreetmap.org/export/embed.html"
-            f"?bbox={lon-0.01}%2C{lat-0.008}%2C{lon+0.01}%2C{lat+0.008}"
-            f"&layer=mapnik"
-            f"&marker={lat}%2C{lon}"
-        )
-        mapa = html.Iframe(src=src, style={"height": f"{height}px"})
+  var pinIcon = L.divIcon({{
+    html:'<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">📍</div>',
+    iconAnchor:[16,32], className:''
+  }});
+  var marker = L.marker([{lat},{lon}], {{icon:pinIcon, draggable:true}}).addTo(map);
+
+  function emitPos(latlng){{
+    window.parent.postMessage({{type:'MAP_CLICK',lat:latlng.lat,lng:latlng.lng}},'*');
+  }}
+
+  marker.on('dragend', function(e){{ emitPos(e.target.getLatLng()); }});
+
+  map.on('click', function(e){{
+    marker.setLatLng(e.latlng);
+    emitPos(e.latlng);
+  }});
+</script>
+</body>
+</html>"""
+
+    # Codificamos el HTML como data URI para el iframe (sin servidor externo)
+    src = "data:text/html;charset=utf-8," + urllib.parse.quote(html_content)
 
     return html.Div([
-        mapa,
-        html.Div(f" {lat}, {lon}", className="mapa-google-overlay"),
+        html.Iframe(
+            id="mapa-leaflet-iframe",
+            src=src,
+            style={"height": f"{height}px", "border": "none",
+                   "borderRadius": "var(--radius-sm)", "width": "100%"},
+        ),
+        # Store puente: el clientside_callback lo llena con {lat, lng}
+        dcc.Store(id="store-mapa-coords", data={"lat": lat, "lng": lon}),
+        html.Div("📍 Haz clic en el mapa o arrastra el pin para ajustar la ubicación",
+                 style={"fontSize": "12px", "color": "var(--text3)",
+                        "marginTop": "6px", "textAlign": "center"}),
     ], className="mapa-google-wrap mb-16")
 
 
@@ -207,10 +244,10 @@ def layout_nuevo() -> html.Div:
         html.Div(id="form-step-2", style={"display": "none"}, children=[
             html.Div(className="card", children=[
                 html.Div("Ubicación del problema", className="card-title"),
-                html.Div("Confirma la ubicación donde ocurre el problema",
+                html.Div("Haz clic en el mapa o arrastra el pin para seleccionar la ubicación exacta",
                          className="card-sub"),
 
-                _mapa_google(),
+                _mapa_leaflet(),
 
                 html.Div([
                     html.Div([
@@ -230,34 +267,19 @@ def layout_nuevo() -> html.Div:
                 html.Div([
                     html.Label("Dirección aproximada", className="form-label"),
                     dcc.Input(
-                        value="Av. Insurgentes Sur 890, Col. del Valle, Benito Juárez, CDMX",
+                        id="dir-input",
+                        value="Col. del Valle, Benito Juárez, CDMX",
                         className="form-input",
                         style={"width": "100%"},
+                        debounce=True,
                     ),
+                    html.Div(id="dir-status", className="text-small",
+                             style={"marginTop": "4px", "color": "var(--text3)"}),
                 ], className="form-group"),
-
-                # Nota de integración futura
-                html.Div([
-                    html.Span("¡", style={"fontSize": "14px"}),
-                    html.Div([
-                        html.Strong("Nota de integración: "),
-                        "Para habilitar el mapa interactivo con pin arrastrable, "
-                        "coloca tu Google Maps API Key en ",
-                        html.Code("vistas/nuevo_reporte.py → GMAPS_KEY",
-                                  style={"fontSize": "11px",
-                                         "background": "rgba(0,0,0,0.06)",
-                                         "padding": "1px 4px",
-                                         "borderRadius": "3px"}),
-                        ". La variable de latitud/longitud se actualizará "
-                        "automáticamente al arrastrar el pin.",
-                    ]),
-                ], className="alert alert-info",
-                   style={"fontSize": "12px", "marginBottom": "12px"}),
 
                 html.Div([
                     html.Span("✓", style={"fontSize": "14px", "flexShrink": "0"}),
-                    html.Div("Ubicación obtenida automáticamente vía GPS. "
-                             "Puedes ajustar las coordenadas manualmente."),
+                    html.Div("La dirección se obtiene automáticamente al seleccionar el punto en el mapa."),
                 ], className="alert alert-success"),
 
                 html.Div([

@@ -1,0 +1,101 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyd
+
+# =========================
+# Virtual Environments
+# =========================
+venv/
+env/
+ENV/
+.venv/
+.virtualenv/
+
+# =========================
+# Dash / Flask
+# =========================
+instance/
+.webassets-cache
+assets/.DS_Store
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+*.out
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints
+
+# =========================
+# VSCode / IDE
+# =========================
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# Mac / Windows
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Testing
+# =========================
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+
+# =========================
+# Build / dist
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# Database
+# =========================
+*.sqlite3
+*.db
+
+# =========================
+# Secrets / API Keys
+# =========================
+config.py
+secrets.py
+credentials.json
+
+# =========================
+# Uploads / archivos temporales
+# =========================
+uploads/
+temp/
+tmp/
+
+# =========================
+# PDF / Archivos generados
+# =========================
+generated/
+exports/
+reports/

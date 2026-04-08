@@ -11,12 +11,20 @@ Flujo:
 """
 import json
 import logging
+import uuid
 
 from sqlalchemy.orm import Session
 
 from app import models
 
 logger = logging.getLogger(__name__)
+
+# Mapeo de categoría interna Watson x → ENUM categoria_reporte de la DB
+_CATEGORIA_DB = {
+    "riesgos":    "medio_ambiente",
+    "movilidad":  "transporte",
+    "otro":       "servicios",
+}
 
 # Mapa de prioridad → probabilidad de atención estimada
 _PROB_ATENCION = {
@@ -26,7 +34,7 @@ _PROB_ATENCION = {
 }
 
 
-async def run_pipeline(report_id: int, db: Session) -> None:
+async def run_pipeline(report_id: "uuid.UUID", db: Session) -> None:
     reporte = db.query(models.Reporte).filter(models.Reporte.id == report_id).first()
     if not reporte:
         logger.error("Reporte %d no encontrado en DB", report_id)
@@ -51,8 +59,8 @@ async def run_pipeline(report_id: int, db: Session) -> None:
                 logger.warning("No se pudo geocodificar el reporte %d", report_id)
 
         # 2. Watson x clasifica la descripción del reporte
-        category = await classify(reporte.descripcion)
-        reporte.categoria = category
+        category = await classify(reporte.descripcion)   # "riesgos" | "movilidad" | "otro"
+        reporte.categoria = _CATEGORIA_DB.get(category, "infraestructura")
         db.commit()
         logger.info("Reporte %d clasificado como: %s", report_id, category)
 
@@ -98,7 +106,7 @@ async def run_pipeline(report_id: int, db: Session) -> None:
         proc.contexto_urbano        = json.dumps(layers_summary, ensure_ascii=False)
 
         # Marcar reporte como listo
-        reporte.estado = "ready"
+        reporte.estado = "procesado"
         db.commit()
         logger.info(
             "Reporte %d listo. Prioridad: %s | Prob. atención: %.0f%%",
@@ -107,7 +115,7 @@ async def run_pipeline(report_id: int, db: Session) -> None:
 
     except Exception as exc:
         logger.exception("Error en pipeline del reporte %d: %s", report_id, exc)
-        reporte.estado = "error"
+        reporte.estado = "cancelado"
         db.commit()
         raise exc
 

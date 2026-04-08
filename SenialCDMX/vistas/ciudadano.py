@@ -91,11 +91,11 @@ def toggle_audio(n_clicks, grabando):
     Output("form-step-3", "style"),
     Output("form-step-4", "style"),
     Output("store-paso-actual", "data"),
-    Input("btn-paso-2",        "n_clicks"),
-    Input("btn-paso-1-back",   "n_clicks"),
-    Input("btn-paso-3",        "n_clicks"),
-    Input("ai-interval",       "n_intervals"),
-    State("store-paso-actual", "data"),
+    Input("btn-paso-2",      "n_clicks"),
+    Input("btn-paso-1-back", "n_clicks"),
+    Input("btn-paso-3",      "n_clicks"),
+    Input("ai-interval",     "n_intervals"),
+    Input("store-paso-actual", "data"),
     prevent_initial_call=True,
 )
 def navegar_pasos(n2, n1back, n3, n_intervals, paso):
@@ -113,6 +113,8 @@ def navegar_pasos(n2, n1back, n3, n_intervals, paso):
         paso,
     )
 
+
+# ── Intervalo IA ──────────────────────────────────────────────────────────────
 
 @callback(
     Output("ai-interval", "disabled"),
@@ -179,12 +181,13 @@ def agregar_capturas(contents_list, filenames, capturas_actuales):
     State("store-capturas",    "data"),
     prevent_initial_call=True,
 )
-def mostrar_resultado(paso, capturas):
+
+def mostrar_resultado(paso):
     if paso != 4:
         return []
     import random
     rpt_id = f"RPT-{random.randint(100, 999)}"
-    n_cap = len(capturas) if capturas else 0
+
     return [
         html.Div([
             html.Div([
