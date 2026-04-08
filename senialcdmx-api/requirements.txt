@@ -18,7 +18,7 @@ pyproj==3.7.1
 fiona==1.10.1
 
 # Geocodificación
-geopy==2.4.1
+geopy>=2.4
 
 # IBM Watson x
 ibm-watsonx-ai==1.4.7
