@@ -1,23 +1,23 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-sqlalchemy==2.0.35
-geoalchemy2==0.15.2
-psycopg2-binary==2.9.9
-pydantic==2.9.2
-pydantic-settings==2.5.2
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+geoalchemy2>=0.15
+psycopg2-binary>=2.9
+pydantic>=2.9
+pydantic-settings>=2.5
 
 # Análisis geoespacial
-geopandas==1.0.1
-shapely==2.0.6
-pyproj==3.6.1
-fiona==1.9.6
+geopandas>=1.0
+shapely>=2.0
+pyproj>=3.6
+fiona>=1.9
 
 # Geocodificación
-geopy==2.4.1
+geopy>=2.4
 
 # IBM Watson x
-ibm-watsonx-ai==1.1.2
+ibm-watsonx-ai>=1.1
 
 # Utilidades
-pandas==2.2.3
-numpy==1.26.4
+pandas>=2.2
+numpy>=1.26
