@@ -103,29 +103,50 @@ def layout_nuevo() -> html.Div:
 
                 # Pestaña audio
                 html.Div(id="tab-content-audio", className="tab-content",
-                         style={"display": "none"}, children=[
+                        style={"display": "none"}, children=[
                     html.Div([
                         html.Div([
                             html.Button(
-                                html.Span("🎙", style={"fontSize": "22px"}),
+                                html.Span("¡", style={"fontSize": "22px"}),
                                 id="audio-btn", className="audio-btn", n_clicks=0,
                             ),
                             html.Div([
                                 html.Div("Presiona para grabar", id="audio-status",
-                                         style={"fontSize": "13px", "fontWeight": "500"}),
+                                        style={"fontSize": "13px", "fontWeight": "500"}),
                                 html.Div("0:00", id="audio-timer",
-                                         className="text-small",
-                                         style={"marginTop": "2px"}),
+                                        className="text-small",
+                                        style={"marginTop": "2px"}),
                             ], style={"flex": "1"}),
                         ], style={
                             "background": "var(--bg)", "borderRadius": "var(--radius-sm)",
                             "padding": "20px", "display": "flex",
                             "alignItems": "center", "gap": "16px", "marginBottom": "16px",
                         }),
+
                         html.Div([
                             html.Span("ℹ", style={"fontSize": "14px"}),
                             html.Div("Demo: Al detener la grabación se simulará la transcripción."),
                         ], className="alert alert-info", style={"fontSize": "12px"}),
+
+                        html.Div(
+                            id="audio-transcript-wrap",
+                            style={"display": "none"},
+                            children=[
+                                html.Label("Transcripción", className="form-label"),
+
+                                html.Div(
+                                    id="audio-transcript",
+                                    style={
+                                        "background": "var(--bg)",
+                                        "padding": "12px",
+                                        "borderRadius": "6px",
+                                        "marginTop": "8px",
+                                        "whiteSpace": "pre-wrap",
+                                        "minHeight": "80px"
+                                    }
+                                )
+                            ]
+                        ),
                     ]),
                 ]),
 
@@ -299,4 +320,5 @@ def layout_nuevo() -> html.Div:
 
         dcc.Store(id="store-ai-result"),
         dcc.Store(id="store-paso-actual", data=1),
+        dcc.Store(id="store-grabando", data=False),
     ])
