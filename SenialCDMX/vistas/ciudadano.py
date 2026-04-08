@@ -39,6 +39,72 @@ def switch_panel(n_nuevo, n_mis, n_ir_nuevo):
     return show, hide, active, normal
 
 
+# Mapa → lat/lon: el postMessage del iframe actualiza el store,
+# y este callback propaga los valores a los inputs de Dash.
+clientside_callback(
+    """
+    function(paso) {
+        if (!window._dashMapListenerSet) {
+            window.addEventListener('message', function(e) {
+                if (!e.data || e.data.type !== 'MAP_CLICK') return;
+                var lat = e.data.lat;
+                var lng = e.data.lng;
+
+                // Helper: actualiza un input controlado por React
+                var setter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value').set;
+                function setInput(el, val) {
+                    if (!el) return;
+                    setter.call(el, val);
+                    el.dispatchEvent(new Event('input',  {bubbles: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                }
+
+                // 1) Lat / Lon
+                setInput(document.getElementById('lat-input'), lat.toFixed(6));
+                setInput(document.getElementById('lon-input'), lng.toFixed(6));
+
+                // 2) Dirección aproximada via Nominatim (reverse geocoding)
+                var dirEl = document.getElementById('dir-input');
+                if (dirEl) {
+                    setInput(dirEl, 'Obteniendo dirección…');
+                    fetch(
+                        'https://nominatim.openstreetmap.org/reverse'
+                        + '?format=jsonv2'
+                        + '&lat=' + lat
+                        + '&lon=' + lng
+                        + '&accept-language=es',
+                        { headers: { 'Accept-Language': 'es' } }
+                    )
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        var a = data.address || {};
+                        var parts = [
+                            a.road || a.pedestrian || a.footway || '',
+                            a.suburb || a.neighbourhood || a.quarter || '',
+                            a.city_district || a.borough || '',
+                            a.city || a.town || a.village || '',
+                            a.state || ''
+                        ].filter(Boolean);
+                        var dir = parts.length ? parts.join(', ') : (data.display_name || '');
+                        setInput(dirEl, dir);
+                    })
+                    .catch(function() {
+                        setInput(dirEl, lat.toFixed(5) + ', ' + lng.toFixed(5));
+                    });
+                }
+            });
+            window._dashMapListenerSet = true;
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("store-mapa-coords", "data"),
+    Input("store-paso-actual",  "data"),
+    prevent_initial_call=False,
+)
+
+
 # Tabs texto / audio 
 @callback(
     Output("tab-content-texto", "style"),
@@ -173,6 +239,38 @@ def agregar_capturas(contents_list, filenames, capturas_actuales):
         f"{total} captura{'s' if total != 1 else ''} adjunta{'s' if total != 1 else ''} · se procesarán al enviar",
         capturas,
     )
+
+
+#  Step indicator ──────────────────────────────────────────────────────────────
+
+@callback(
+    Output("step-indicator", "children"),
+    Input("store-paso-actual", "data"),
+)
+def actualizar_step_indicator(paso):
+    paso = paso or 1
+
+    def _step(num: int, label: str):
+        if num < paso:
+            estado = "done"
+        elif num == paso:
+            estado = "active"
+        else:
+            estado = ""
+        return html.Div([
+            html.Div(
+                "✓" if num < paso else str(num),
+                className="step-num",
+            ),
+            html.Div(label, className="step-label"),
+        ], className=f"step {estado}".strip())
+
+    return [
+        _step(1, "Descripción"),
+        _step(2, "Ubicación"),
+        _step(3, "Análisis IA"),
+        _step(4, "Resultado"),
+    ]
 
 
 #  Resultado de IA 

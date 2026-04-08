@@ -70,7 +70,7 @@ def _mapa_leaflet(lat: float = DEFAULT_LAT, lon: float = DEFAULT_LON,
             style={"height": f"{height}px", "border": "none",
                    "borderRadius": "var(--radius-sm)", "width": "100%"},
         ),
-        # Store puente: el clientside_callback lo llena con {lat, lng}
+        # Store puente: actualizado por clientside_callback en ciudadano.py
         dcc.Store(id="store-mapa-coords", data={"lat": lat, "lng": lon}),
         html.Div("📍 Haz clic en el mapa o arrastra el pin para ajustar la ubicación",
                  style={"fontSize": "12px", "color": "var(--text3)",
