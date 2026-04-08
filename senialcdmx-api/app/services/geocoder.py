@@ -21,10 +21,9 @@ _geocoder = Nominatim(user_agent=settings.nominatim_user_agent, timeout=10)
 
 def _build_address(report) -> str:
     parts = [
-        f"{report.street} {report.ext_number}",
+        report.direccion_aprox,
         report.colonia,
         report.alcaldia,
-        report.postal_code,
         "Ciudad de México, México",
     ]
     return ", ".join(p for p in parts if p)

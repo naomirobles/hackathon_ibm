@@ -60,18 +60,18 @@ def _filter_within(
 
 
 def _filter_by_alcaldia(
-    layer: Optional[gpd.GeoDataFrame],
+    layer,   # GeoDataFrame o DataFrame plano
     alcaldia: str,
-) -> gpd.GeoDataFrame:
+) -> pd.DataFrame:
     """Filtrado por atributo para capas sin coordenadas (ej: infracciones)."""
-    if layer is None or layer.empty:
-        return gpd.GeoDataFrame()
+    if layer is None or (hasattr(layer, "empty") and layer.empty):
+        return pd.DataFrame()
     alcaldia_col = next(
         (c for c in layer.columns if "alcaldia" in c.lower()), None
     )
-    if not alcaldia_col:
-        return gpd.GeoDataFrame()
-    mask = layer[alcaldia_col].str.upper().str.contains(
+    if not alcaldia_col or not alcaldia:
+        return pd.DataFrame()
+    mask = layer[alcaldia_col].astype(str).str.upper().str.contains(
         alcaldia.upper(), na=False
     )
     return layer[mask]

@@ -17,7 +17,7 @@ Estructura de archivos esperada en data/layers/:
 """
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import geopandas as gpd
 import pandas as pd
@@ -28,26 +28,35 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path("data/layers")
 
 # Cache en memoria — se llena una sola vez en startup
-_layers: dict[str, dict[str, Optional[gpd.GeoDataFrame]]] = {
+# Valor: GeoDataFrame (con geometría) o DataFrame plano (sin coords, para filtro por atributo)
+_layers: dict[str, dict[str, Union[gpd.GeoDataFrame, pd.DataFrame, None]]] = {
     "riesgos": {},
     "movilidad": {},
 }
 _loaded = False
 
 
+def _read_csv(path: Path) -> pd.DataFrame:
+    """Lee un CSV manejando encodings frecuentes en datos abiertos CDMX."""
+    try:
+        return pd.read_csv(path, encoding="utf-8", low_memory=False)
+    except UnicodeDecodeError:
+        return pd.read_csv(path, encoding="latin-1", low_memory=False)
+
+
 def _csv_to_gdf(
     path: Path,
     lat_col: str = "latitud",
     lng_col: str = "longitud",
-) -> Optional[gpd.GeoDataFrame]:
-    """Lee un CSV y lo convierte a GeoDataFrame usando columnas de coordenadas."""
-    try:
-        df = pd.read_csv(path, encoding="utf-8", low_memory=False)
-    except UnicodeDecodeError:
-        df = pd.read_csv(path, encoding="latin-1", low_memory=False)
+) -> Union[gpd.GeoDataFrame, pd.DataFrame, None]:
+    """
+    Lee un CSV y lo convierte a GeoDataFrame si tiene columnas de coordenadas.
+    Si no tiene coords, devuelve un DataFrame plano para filtrado por atributo.
+    """
+    df = _read_csv(path)
 
     if lat_col in df.columns and lng_col in df.columns:
-        df = df.dropna(subset=[lat_col, lng_col])
+        df = df.copy()
         df[lat_col] = pd.to_numeric(df[lat_col], errors="coerce")
         df[lng_col] = pd.to_numeric(df[lng_col], errors="coerce")
         df = df.dropna(subset=[lat_col, lng_col])
@@ -56,10 +65,9 @@ def _csv_to_gdf(
         logger.info("Cargado %s: %d registros con coords", path.name, len(gdf))
         return gdf
 
-    # Sin coords — devolver GeoDataFrame vacío con los datos para filtrado por atributo
-    gdf = gpd.GeoDataFrame(df, crs="EPSG:4326")
-    logger.warning("%s no tiene columnas lat/lng — disponible solo para filtrado por atributo", path.name)
-    return gdf
+    # Sin coords — DataFrame plano, disponible solo para filtrado por atributo
+    logger.warning("%s sin columnas lat/lng — solo filtrado por atributo", path.name)
+    return df
 
 
 def _load_gpkg(path: Path) -> Optional[gpd.GeoDataFrame]:
@@ -123,12 +131,9 @@ def load_all_layers() -> None:
             if lat_col:
                 _layers["movilidad"][key] = _csv_to_gdf(path, lat_col, lng_col)
             else:
-                # Sin coords — guardar DataFrame plano para filtrado por alcaldia
-                try:
-                    df = pd.read_csv(path, encoding="utf-8", low_memory=False)
-                except UnicodeDecodeError:
-                    df = pd.read_csv(path, encoding="latin-1", low_memory=False)
-                _layers["movilidad"][key] = gpd.GeoDataFrame(df, crs="EPSG:4326")
+                # Sin coords — DataFrame plano para filtrado por alcaldia
+                df = _read_csv(path)
+                _layers["movilidad"][key] = df
                 logger.info("Cargado %s (sin coords): %d registros", filename, len(df))
         else:
             logger.warning("Capa no encontrada: %s", path)

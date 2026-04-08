@@ -40,4 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+/senialcdmx-api/app/services/__pycache__
 /senialcdmx-api/app/__pycache__

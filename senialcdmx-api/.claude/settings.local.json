@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/naomi/proyectos/hackathon_ibm/Senial-CDMX/types/**)",
+      "Read(//c/Users/naomi/proyectos/hackathon_ibm/Senial-CDMX/app/**)",
+      "Bash(python -c ':*)",
+      "Bash(pip install:*)"
+    ]
+  }
+}

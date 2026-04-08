@@ -1,42 +1,78 @@
 from datetime import datetime
-from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+
+# ── Request: lo que envía el frontend ─────────────────────────────────────────
 
 class ReportCreate(BaseModel):
-    description: str
-    street: str
-    ext_number: str
-    int_number: str | None = None
-    postal_code: str
-    alcaldia: str
-    colonia: str
-    between_street_1: str | None = None
-    between_street_2: str | None = None
-    lat: float | None = None
-    lng: float | None = None
+    descripcion: str
+    descripcion_audio: str | None = None
 
+    # Ubicación — el frontend puede enviar coords del mapa o dirección libre
+    direccion_aprox: str | None = None
+    alcaldia: str | None = None
+    colonia: str | None = None
+    ciudad: str = "Ciudad de México"
+    latitud: float | None = None
+    longitud: float | None = None
+
+    fuente_input: str = "web"
+    tiene_imagen: bool = False
+    usuario_id: str | None = None   # UUID del usuario autenticado, opcional
+
+
+# ── Response: POST /reports ────────────────────────────────────────────────────
 
 class ReportCreatedResponse(BaseModel):
     report_id: int
+    codigo: str
     status: str
 
 
-class LayersSummary(BaseModel):
-    matched_layers: list[str]
-    findings: list[str]
+# ── Response: GET /reports/{id} ────────────────────────────────────────────────
+
+class ProcesamientoIAResponse(BaseModel):
+    tipo_problema: str | None = None
+    categoria_detectada: str | None = None
+    prioridad_asignada: str | None = None
+    confianza_pct: float | None = None
+    probabilidad_atencion: float | None = None
+    justificacion: str | None = None
+    recomendacion_gobierno: str | None = None
+    contexto_urbano: str | None = None
+
+    class Config:
+        from_attributes = True
 
 
 class ReportResponse(BaseModel):
     report_id: int
+    codigo: str | None = None
     status: str
-    category: str | None = None
-    priority: str | None = None
-    lat: float | None = None
-    lng: float | None = None
-    analysis: str | None = None
-    layers_summary: LayersSummary | None = None
+    latitud: float | None = None
+    longitud: float | None = None
+    alcaldia: str | None = None
+    colonia: str | None = None
+    created_at: datetime | None = None
+
+    # Resultados del pipeline (null mientras status == "processing")
+    ia: ProcesamientoIAResponse | None = None
+
+    class Config:
+        from_attributes = True
+
+
+# ── Response: GET /reports (lista) ────────────────────────────────────────────
+
+class ReportListItem(BaseModel):
+    report_id: int
+    codigo: str | None = None
+    status: str
+    categoria: str | None = None
+    alcaldia: str | None = None
+    prioridad: str | None = None
+    probabilidad_atencion: float | None = None
     created_at: datetime | None = None
 
     class Config:
