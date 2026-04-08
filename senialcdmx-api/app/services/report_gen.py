@@ -23,8 +23,8 @@ genera un análisis breve con:
 
 Sé conciso. Máximo 200 palabras.
 
-Reporte: {description}
-Categoría: {category}
+Reporte: {descripcion}
+Categoría: {categoria}
 Ubicación: {alcaldia}, {colonia}
 Hallazgos geoespaciales: {findings}
 """
