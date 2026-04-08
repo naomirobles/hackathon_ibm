@@ -7,11 +7,10 @@ Flujo:
   3. Cargar capas correspondientes desde data/layers/
   4. Ejecutar análisis espacial según categoría
   5. Watson x genera conclusión narrativa + prioridad
-  6. Guardar resultado en procesamiento_ia y marcar reporte como "procesado"
+  6. Guardar resultado en procesamiento_ia y marcar reporte como "ready"
 """
 import json
 import logging
-import uuid
 
 from sqlalchemy.orm import Session
 
@@ -19,35 +18,18 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
-# Mapeo categoría interna Watson x → ENUM categoria_reporte de la DB
-_CATEGORIA_DB = {
-    "riesgos":   "medio_ambiente",
-    "movilidad": "transporte",
-    "otro":      "servicios",
-}
-
-# Prioridad → probabilidad de atención estimada
+# Mapa de prioridad → probabilidad de atención estimada
 _PROB_ATENCION = {
-    "alta":  88.0,
+    "alta": 88.0,
     "media": 62.0,
-    "baja":  30.0,
+    "baja": 30.0,
 }
 
 
-def _coords_validas(valor) -> bool:
-    """True si el valor es una coordenada real (no None y no el placeholder 0)."""
-    if valor is None:
-        return False
-    try:
-        return float(valor) != 0.0
-    except (TypeError, ValueError):
-        return False
-
-
-async def run_pipeline(report_id: uuid.UUID, db: Session) -> None:
+async def run_pipeline(report_id: int, db: Session) -> None:
     reporte = db.query(models.Reporte).filter(models.Reporte.id == report_id).first()
     if not reporte:
-        logger.error("Reporte %s no encontrado en DB", report_id)
+        logger.error("Reporte %d no encontrado en DB", report_id)
         return
 
     try:
@@ -57,39 +39,36 @@ async def run_pipeline(report_id: uuid.UUID, db: Session) -> None:
         from app.services.spatial import spatial_analysis
         from app.services.report_gen import generate_report
 
-        # 1. Geocodificar si no hay coordenadas reales (0.0 = placeholder)
-        if not _coords_validas(reporte.latitud):
+        # 1. Geocodificar si el usuario no puso pin en el mapa
+        if not reporte.latitud:
             lat, lng = await geocode(reporte)
-            if lat is not None and lng is not None:
+            if lat and lng:
                 reporte.latitud = lat
                 reporte.longitud = lng
                 db.commit()
-                logger.info("Reporte %s geocodificado: %.6f, %.6f", report_id, lat, lng)
+                logger.info("Reporte %d geocodificado: %.6f, %.6f", report_id, lat, lng)
             else:
-                logger.warning("No se pudo geocodificar el reporte %s", report_id)
+                logger.warning("No se pudo geocodificar el reporte %d", report_id)
 
-        # 2. Clasificar descripción con Watson x
+        # 2. Watson x clasifica la descripción del reporte
         category = await classify(reporte.descripcion)
-        reporte.categoria = _CATEGORIA_DB.get(category, "infraestructura")
+        reporte.categoria = category
         db.commit()
-        logger.info("Reporte %s clasificado como: %s", report_id, category)
+        logger.info("Reporte %d clasificado como: %s", report_id, category)
 
-        # 3. Cargar capas de la categoría
+        # 3. Cargar capas correspondientes a la categoría desde data/layers/
         layers = get_layers(category)
 
-        # 4. Análisis espacial — usar coords reales si existen, sino None
-        lat = float(reporte.latitud) if _coords_validas(reporte.latitud) else None
-        lng = float(reporte.longitud) if _coords_validas(reporte.longitud) else None
-
+        # 4. Ejecutar análisis espacial según categoría
         metrics, layers_summary = spatial_analysis(
-            lat=lat,
-            lng=lng,
+            lat=float(reporte.latitud) if reporte.latitud else None,
+            lng=float(reporte.longitud) if reporte.longitud else None,
             category=category,
             layers=layers,
             alcaldia=reporte.alcaldia or "",
         )
 
-        # 5. Generar reporte narrativo con Watson x
+        # 5. Watson x genera: conclusión narrativa + prioridad + acciones
         result = await generate_report(
             report=reporte,
             metrics=metrics,
@@ -97,7 +76,10 @@ async def run_pipeline(report_id: uuid.UUID, db: Session) -> None:
             category=category,
         )
 
-        # 6. Guardar en procesamiento_ia
+        # 6. Determinar tipo_problema (más específico que categoría)
+        tipo_problema = _tipo_problema(category, reporte.descripcion)
+
+        # Guardar resultado en procesamiento_ia
         proc = db.query(models.ProcesamientoIA).filter(
             models.ProcesamientoIA.reporte_id == report_id
         ).first()
@@ -106,29 +88,27 @@ async def run_pipeline(report_id: uuid.UUID, db: Session) -> None:
             proc = models.ProcesamientoIA(reporte_id=report_id)
             db.add(proc)
 
-        proc.tipo_problema          = _tipo_problema(category, reporte.descripcion)
+        proc.tipo_problema          = tipo_problema
         proc.categoria_detectada    = category
         proc.prioridad_asignada     = result.priority
-        proc.confianza_pct          = 80.0
+        proc.confianza_pct          = 80.0   # placeholder — Watson x no devuelve score explícito
         proc.probabilidad_atencion  = _PROB_ATENCION.get(result.priority, 60.0)
         proc.justificacion          = result.conclusion
         proc.recomendacion_gobierno = "\n".join(result.actions) if result.actions else None
         proc.contexto_urbano        = json.dumps(layers_summary, ensure_ascii=False)
 
-        reporte.estado = "procesado"
+        # Marcar reporte como listo
+        reporte.estado = "ready"
         db.commit()
         logger.info(
-            "Reporte %s listo. Prioridad: %s | Prob. atención: %.0f%%",
+            "Reporte %d listo. Prioridad: %s | Prob. atención: %.0f%%",
             report_id, result.priority, proc.probabilidad_atencion,
         )
 
     except Exception as exc:
-        logger.exception("Error en pipeline del reporte %s: %s", report_id, exc)
-        try:
-            reporte.estado = "cancelado"
-            db.commit()
-        except Exception:
-            db.rollback()
+        logger.exception("Error en pipeline del reporte %d: %s", report_id, exc)
+        reporte.estado = "error"
+        db.commit()
         raise exc
 
 

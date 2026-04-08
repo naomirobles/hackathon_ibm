@@ -49,7 +49,7 @@ _model_vision: ModelInference | None = None
 
 
 def _get_model_text() -> ModelInference:
-    """ingleton de Llama 3.2 Vision para clasificación con texto."""
+    """Singleton de Granite para clasificación solo texto."""
     global _model_text
     if _model_text is None:
         credentials = Credentials(
@@ -57,11 +57,13 @@ def _get_model_text() -> ModelInference:
             api_key=settings.watsonx_api_key,
         )
         _model_text = ModelInference(
-            model_id="ibm/granite-3-1-8b-base",
+            model_id="ibm/granite-3-8b-instruct",
             credentials=credentials,
             project_id=settings.watsonx_project_id,
             params={
-                "max_new_tokens": 20,
+                "max_new_tokens": 10,
+                "temperature": 0,
+                "stop_sequences": ["\n"],
             },
         )
     return _model_text
