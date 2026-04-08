@@ -32,13 +32,29 @@ señalcdmx-api/
 │   ├── config.py            # Settings desde variables de entorno
 │   ├── services/
 │   │   ├── geocoder.py      # Dirección → (lat, lng) via Nominatim
-│   │   ├── classifier.py    # Descripción → categoría via Watson x
-│   │   ├── layer_fetcher.py # Carga capas GeoJSON de datos abiertos CDMX
-│   │   ├── spatial.py       # Análisis espacial GeoPandas (buffer 500m)
-│   │   └── report_gen.py    # Genera reporte final con Watson x
+│   │   │                    # También geocodifica registros de capas sin coords
+│   │   ├── classifier.py    # Descripción → "riesgos" | "movilidad" via Watson x
+│   │   ├── layer_fetcher.py # Carga capas al arrancar el servidor desde data/layers/
+│   │   ├── spatial.py       # Buffer 500m, sjoin, intersecciones — orquesta ambas categorías
+│   │   ├── analysis/
+│   │   │   ├── riesgos.py   # Lógica de análisis para gestión de riesgos
+│   │   │   └── movilidad.py # Lógica de análisis para movilidad e infraestructura
+│   │   └── report_gen.py    # Recibe métricas + interpretación manual → Watson x → conclusión
 │   └── tasks.py             # Pipeline async orquestado con BackgroundTasks
 ├── data/
-│   └── layers/              # GeoJSON de capas CDMX descargados al inicio
+│   └── layers/
+│       ├── riesgos/         # Capas GeoJSON/GeoPackage para gestión de riesgos
+│       │   ├── atlas_inundaciones.geojson
+│       │   ├── niveles_inundacion.geojson
+│       │   ├── presas.geojson
+│       │   ├── captacion_pluvial.geojson
+│       │   ├── tiraderos_clandestinos.geojson
+│       │   └── areas_verdes.geojson
+│       └── movilidad/       # Capas para movilidad e infraestructura
+│           ├── CALLES.gpkg  # Red vial — fuente de intersecciones
+│           ├── infracciones.geojson
+│           ├── hechos_transito.geojson
+│           └── incidentes_viales_c5.geojson
 ├── requirements.txt
 ├── .env.example
 └── docker-compose.yml
@@ -116,101 +132,224 @@ El frontend hace polling cada 5 segundos hasta que `status` sea `"ready"`.
 async def run_pipeline(report_id: int, db: Session):
     report = get_report(db, report_id)
 
-    # 1. Geocodificar si el usuario no puso marcador
+    # 1. Geocodificar si el usuario no puso marcador en el mapa
     if not report.lat:
-        report.lat, report.lng = await geocode(report)
+        report.lat, report.lng = await geocode_address(report)
         db.commit()
 
-    # 2. Clasificar descripción con Watson x
+    # 2. Watson x clasifica la descripción del reporte
     category = await classify(report.description)
-    # Valores posibles: "riesgos" | "movilidad" | "otro"
+    # Valores posibles: "riesgos" | "movilidad"
 
-    # 3. Cargar capas relevantes según categoría
-    layers_gdf = fetch_layers(category)
+    # 3. Cargar capas correspondientes a la categoría desde data/layers/
+    layers = layer_fetcher.get_layers(category)
 
-    # 4. Análisis espacial: buffer 500m alrededor del punto
-    findings = spatial_analysis(report.lat, report.lng, layers_gdf)
+    # 4. Ejecutar análisis espacial según categoría
+    if category == "riesgos":
+        metrics, maps = await analyze_riesgos(report.lat, report.lng, layers)
+    elif category == "movilidad":
+        metrics, maps = await analyze_movilidad(report.lat, report.lng, layers)
 
-    # 5. Generar reporte con Watson x
-    analysis_text, priority = await generate_report(report, findings)
+    # 5. En este prototipo la interpretación de métricas y mapas es MANUAL.
+    #    El objeto `metrics` y las imágenes `maps` se guardan en DB/disco
+    #    para que puedan ser revisados. La interpretación escrita se pasa
+    #    como input al siguiente paso.
+    #    TODO post-hackathon: reemplazar con interpretación automática por IA.
 
-    # 6. Guardar y marcar como listo
-    update_report(db, report_id, category, analysis_text, priority, status="ready")
+    # 6. Watson x recibe las métricas + interpretación manual y genera:
+    #       - conclusión narrativa
+    #       - prioridad: "alta" | "media" | "baja"
+    #       - propuestas de acción
+    result = await generate_report(report, metrics, interpretation=None)
+
+    # 7. Guardar resultado completo y marcar reporte como listo
+    update_report(db, report_id,
+                  category=category,
+                  metrics=metrics,
+                  maps=maps,
+                  conclusion=result.conclusion,
+                  priority=result.priority,
+                  actions=result.actions,
+                  status="ready")
 ```
 
 ---
 
 ## Categorías de análisis (hackathon: solo estas dos)
 
-### A. Gestión de riesgos — inundaciones
+### A. Gestión de riesgos — inundaciones (`services/analysis/riesgos.py`)
 
-Capas a usar (GeoJSON del portal datos abiertos CDMX):
-- Atlas de riesgo — niveles de inundación
-- Presas
-- Sistema de captación de aguas pluviales
-- Tiraderos clandestinos
-- Inventario de áreas verdes
-- Datos climáticos de la zona
+**Capas** (archivos en `data/layers/riesgos/`):
+| Archivo | Descripción |
+|---|---|
+| `atlas_inundaciones.geojson` | Zonas con riesgo de inundación |
+| `niveles_inundacion.geojson` | Niveles de inundación y carencia de áreas verdes |
+| `presas.geojson` | Ubicación de presas |
+| `captacion_pluvial.geojson` | Sistema de captación de aguas pluviales |
+| `tiraderos_clandestinos.geojson` | Tiraderos clandestinos |
+| `areas_verdes.geojson` | Inventario de áreas verdes |
 
-Lógica espacial: si el punto del reporte cae dentro o a menos de 500m de zonas de riesgo, reportar nivel de exposición.
+**Procedimiento:**
 
-### B. Movilidad e infraestructura — seguridad en cruces peatonales
+1. Crear buffer de 500 metros en EPSG:32614 (UTM zona 14N) alrededor del punto del reporte. Reconvertir a EPSG:4326 para los joins.
+2. Para cada capa, verificar si los registros tienen geometría/coordenadas. Si no, llamar a `geocoder.geocode_records(gdf)` para obtenerlas antes del filtrado.
+3. Filtrar cada capa con `geopandas.sjoin` o `.within(buffer)` para quedarse solo con los registros dentro del buffer.
+4. Calcular y devolver las siguientes métricas:
 
-Capas a usar:
-- Red vial (para ubicar intersecciones cercanas)
-- Registro de infracciones
-- Hechos de tránsito
-- Incidentes viales reportados por ciudadanos
+```python
+metrics = {
+    "zona_riesgo_inundacion": bool,         # ¿el punto cae en zona de riesgo?
+    "nivel_riesgo": "alto | medio | bajo | ninguno",
+    "n_presas_cercanas": int,
+    "n_puntos_captacion": int,
+    "n_tiraderos": int,
+    "cobertura_areas_verdes_m2": float,     # suma de área verde dentro del buffer
+    "deficit_areas_verdes": bool,           # según capa de carencia
+}
+```
 
-Lógica espacial: contar incidentes y hechos de tránsito en radio de 500m, identificar intersecciones de alto riesgo.
+5. Generar un mapa PNG por cada capa con registros encontrados, usando `matplotlib` + `contextily` (mapa base de CDMX). Guardar en `data/maps/{report_id}/`.
 
 ---
 
-## Clasificación con Watson x (`classifier.py`)
+### B. Movilidad e infraestructura — cruces peatonales (`services/analysis/movilidad.py`)
 
-Usar zero-shot classification con modelo Granite. El prompt debe devolver únicamente la categoría.
+**Capas** (archivos en `data/layers/movilidad/`):
+| Archivo | Descripción |
+|---|---|
+| `CALLES.gpkg` | Red vial — fuente para detectar intersecciones |
+| `infracciones.geojson` | Infracciones al reglamento de tránsito |
+| `hechos_transito.geojson` | Hechos de tránsito (accidentes) |
+| `incidentes_viales_c5.geojson` | Incidentes viales reportados por C5 |
+
+**Procedimiento:**
+
+1. Crear buffer de 500 metros (EPSG:32614 → EPSG:4326) alrededor del punto del reporte.
+2. Para cada capa, verificar si los registros tienen geometría. Si no, llamar a `geocoder.geocode_records(gdf)`.
+3. Detectar intersecciones dentro del buffer usando `CALLES.gpkg`:
+   - Encontrar nodos donde se cruzan dos o más segmentos de calle.
+   - Asignar un identificador único a cada intersección (`intersection_id`).
+   - Asociar los eventos de las otras capas al `intersection_id` más cercano.
+4. Filtrar infracciones, hechos de tránsito e incidentes dentro del buffer.
+5. Calcular y devolver las siguientes métricas:
 
 ```python
-CLASSIFICATION_PROMPT = """
-Eres un clasificador de reportes ciudadanos para la Ciudad de México.
-Clasifica el siguiente reporte en UNA de estas categorías:
-- riesgos: inundaciones, encharcamientos, drenaje, zonas de peligro natural
-- movilidad: accidentes viales, infracciones, cruces peligrosos, baches
-- otro: cualquier otra cosa
-
-Responde SOLO con la categoría en minúsculas, sin explicación.
-
-Reporte: {description}
-"""
+metrics = {
+    "n_intersecciones": int,               # total de intersecciones en el buffer
+    "interseccion_mas_conflictiva": str,   # intersection_id con más eventos
+    "n_infracciones": int,
+    "n_hechos_transito": int,
+    "n_incidentes_c5": int,
+    "total_eventos": int,                  # suma de los tres anteriores
+    "eventos_por_interseccion": dict,      # {intersection_id: n_eventos}
+}
 ```
+
+6. Generar un mapa PNG con:
+   - Red vial dentro del buffer.
+   - Intersecciones marcadas (tamaño proporcional a número de eventos).
+   - Capas de hechos e incidentes superpuestas con colores distintos.
+   - Guardar en `data/maps/{report_id}/`.
+
+---
+
+### Geocodificación de registros sin coordenadas (`geocoder.py`)
+
+Algunas capas pueden tener columnas de dirección pero no geometría. La función `geocode_records(gdf)` debe:
+
+```python
+def geocode_records(gdf: gpd.GeoDataFrame, address_col: str) -> gpd.GeoDataFrame:
+    """
+    Para cada fila sin geometría, construye una dirección a partir de address_col
+    y consulta Nominatim para obtener lat/lng.
+    Devuelve el GeoDataFrame con geometrías completas.
+    Usa caché para no repetir consultas idénticas.
+    """
+```
+
+Usar `geopy.geocoders.Nominatim` con `user_agent` desde config. Agregar delay de 1 segundo entre requests para respetar el rate limit de Nominatim.
 
 ---
 
 ## Generación de reporte con Watson x (`report_gen.py`)
 
+Watson x recibe las métricas calculadas más una interpretación manual (en este prototipo) y devuelve conclusión, prioridad y propuestas de acción.
+
 ```python
 REPORT_PROMPT = """
-Eres un analista de seguridad urbana de la Ciudad de México.
-Con base en el siguiente reporte ciudadano y los datos geoespaciales del entorno,
-genera un análisis breve con:
-1. Resumen del problema reportado
-2. Hallazgos relevantes del entorno (datos geoespaciales)
-3. Prioridad de atención: alta, media o baja — con justificación
+Eres un analista de riesgo urbano para la Ciudad de México.
+Con base en el reporte ciudadano y las métricas de análisis geoespacial,
+genera una respuesta estructurada en JSON con exactamente estos campos:
 
-Sé conciso. Máximo 200 palabras.
+{{
+  "conclusion": "párrafo de 2-3 oraciones explicando la situación",
+  "priority": "alta | media | baja",
+  "priority_justification": "una oración justificando la prioridad",
+  "proposed_actions": ["acción 1", "acción 2", "acción 3"]
+}}
 
-Reporte: {description}
+Responde SOLO con el JSON, sin texto adicional.
+
+Reporte ciudadano: {description}
 Categoría: {category}
-Ubicación: {alcaldia}, {colonia}
-Hallazgos geoespaciales: {findings}
+Ubicación: {colonia}, {alcaldia}
+Métricas del análisis: {metrics}
+Interpretación del analista: {interpretation}
 """
 ```
 
-La respuesta debe ser parseada para extraer la prioridad (`alta | media | baja`) y el texto de análisis.
+Parsear la respuesta como JSON. Si el parsing falla, reintentar una vez con un prompt más estricto.
 
 ---
 
-## Variables de entorno (`.env`)
+## Response final del endpoint `GET /reports/{report_id}`
+
+```json
+{
+  "report_id": 1,
+  "status": "ready",
+  "category": "riesgos | movilidad",
+  "priority": "alta | media | baja",
+  "priority_justification": "string",
+  "lat": 19.432,
+  "lng": -99.133,
+  "conclusion": "string — conclusión generada por Watson x",
+  "proposed_actions": ["acción 1", "acción 2", "acción 3"],
+  "metrics": { },
+  "maps": [
+    { "layer": "atlas_inundaciones", "url": "/static/maps/1/atlas_inundaciones.png" },
+    { "layer": "tiraderos", "url": "/static/maps/1/tiraderos.png" }
+  ],
+  "created_at": "ISO 8601"
+}
+```
+
+Los mapas se sirven como archivos estáticos con `app.mount("/static", StaticFiles(directory="data"), name="static")`.
+
+---
+
+## Clasificación con Watson x (`classifier.py`)
+
+Zero-shot classification con modelo Granite. Devuelve solo la categoría como string.
+
+```python
+CLASSIFICATION_PROMPT = """
+Eres un clasificador de reportes ciudadanos para la Ciudad de México.
+Clasifica el siguiente reporte en UNA de estas dos categorías:
+- riesgos: inundaciones, encharcamientos, drenaje tapado, zonas de peligro por agua, tiraderos
+- movilidad: accidentes viales, infracciones, cruces peatonales peligrosos, baches, semáforos
+
+Responde SOLO con la palabra: riesgos   o   movilidad
+
+Reporte: {description}
+"""
+```
+
+Si la respuesta no es exactamente `"riesgos"` o `"movilidad"`, hacer un segundo intento. Si falla de nuevo, asignar `"riesgos"` como fallback y loggear la advertencia.
+
+---
+
+## Notas de desarrollo
 
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/señalcdmx
@@ -224,12 +363,30 @@ NOMINATIM_USER_AGENT=señalcdmx-hackathon
 
 ## Notas de desarrollo
 
-- Las capas GeoJSON de datos abiertos CDMX se descargan **una sola vez al arrancar el servidor** y se guardan en `data/layers/`. No hacer requests al portal por cada reporte — sería demasiado lento.
-- El análisis espacial usa `geopandas.sjoin` o `buffer()` de Shapely. El CRS de trabajo es **EPSG:4326** (WGS84) para coords, convertir a **EPSG:32614** (UTM zona 14N) para calcular distancias en metros.
-- CORS habilitado para `localhost:3000` (Next.js en desarrollo).
-- El frontend hace polling a `GET /reports/{id}` cada 5 segundos. No implementar WebSockets por ahora.
-- Watson x tiene latencia variable — el pipeline puede tardar entre 30 segundos y 2 minutos dependiendo de la carga. El tiempo objetivo visible al usuario es de 1 a 3 minutos.
-- Para demo del hackathon: preparar al menos 2 casos de prueba con direcciones reales de CDMX, uno por categoría (ej. zona de inundación en Iztapalapa, cruce conflictivo en Cuauhtémoc).
+- Las capas se cargan **una sola vez al arrancar el servidor** (`layer_fetcher.py` con `@app.on_event("startup")`). No hacer I/O de archivos por cada reporte.
+- CRS de trabajo: leer capas en **EPSG:4326**, reproyectar a **EPSG:32614** (UTM zona 14N) solo para calcular el buffer en metros, luego volver a 4326 para los joins y los mapas.
+- Los mapas PNG se generan con `matplotlib` + `contextily` (tiles de OpenStreetMap). Guardar en `data/maps/{report_id}/` y servir como estáticos.
+- CORS habilitado para `localhost:3000` (Next.js dev).
+- El frontend hace polling a `GET /reports/{id}` cada 5 segundos. No usar WebSockets por ahora.
+- La interpretación manual de métricas es un placeholder en este prototipo. El campo `interpretation` en `report_gen.py` puede ser `None` o una cadena vacía — Watson x genera la conclusión con solo las métricas.
+- Para la demo: preparar 2 reportes de prueba con coords reales de CDMX, uno por categoría (ej. zona de inundación en Iztapalapa para riesgos; cruce Insurgentes-Álvaro Obregón para movilidad).
+- Nominatim tiene rate limit de 1 req/seg — agregar `time.sleep(1)` entre geocodificaciones de registros.
+
+---
+
+## Variables de entorno (`.env`)
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/señalcdmx
+WATSONX_API_KEY=
+WATSONX_PROJECT_ID=
+WATSONX_URL=https://us-south.ml.cloud.ibm.com
+NOMINATIM_USER_AGENT=señalcdmx-hackathon
+MAPS_OUTPUT_DIR=data/maps
+LAYERS_DIR=data/layers
+```
+
+---
 
 ---
 

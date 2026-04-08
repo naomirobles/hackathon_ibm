@@ -5,7 +5,19 @@ geoalchemy2==0.15.2
 psycopg2-binary==2.9.9
 pydantic==2.9.2
 pydantic-settings==2.5.2
+
+# Análisis geoespacial
 geopandas==1.0.1
 shapely==2.0.6
-ibm-watsonx-ai==1.1.2
+pyproj==3.6.1
+fiona==1.9.6
+
+# Geocodificación
 geopy==2.4.1
+
+# IBM Watson x
+ibm-watsonx-ai==1.1.2
+
+# Utilidades
+pandas==2.2.3
+numpy==1.26.4

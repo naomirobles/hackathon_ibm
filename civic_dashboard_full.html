@@ -1,0 +1,624 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:'IBM Plex Sans','Helvetica Neue',Arial,sans-serif}
+:root{
+  --ibm-green:#0F6E56;--ibm-green-light:#1D9E75;--ibm-green-dark:#085041;
+  --ibm-green-bg:#E1F5EE;--ibm-green-mid:#5DCAA5;
+  --ibm-gray:#2C2C2A;--ibm-gray-mid:#5F5E5A;--ibm-gray-light:#F1EFE8;
+  --ibm-blue:#185FA5;--ibm-white:#fff;
+  --radius:8px;--radius-lg:12px;--radius-xl:16px;
+}
+body{background:var(--ibm-gray-light);min-height:100vh;font-size:14px;color:var(--ibm-gray)}
+.hidden{display:none!important}
+/* ===== NAV ===== */
+.sidebar{width:240px;background:#fff;border-right:0.5px solid #D3D1C7;min-height:100vh;display:flex;flex-direction:column;position:fixed;left:0;top:0;z-index:10}
+.sidebar-logo{padding:20px 20px 16px;border-bottom:0.5px solid #D3D1C7;display:flex;align-items:center;gap:10px}
+.logo-icon{width:32px;height:32px;background:var(--ibm-green);border-radius:6px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:18px;height:18px;fill:#fff}
+.logo-text{font-size:16px;font-weight:500;color:var(--ibm-gray);letter-spacing:0.01em}
+.logo-sub{font-size:10px;color:var(--ibm-gray-mid);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
+.nav-section{padding:16px 12px 8px;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ibm-gray-mid)}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius);cursor:pointer;color:var(--ibm-gray-mid);font-size:13px;margin:1px 0;transition:background 0.15s}
+.nav-item:hover{background:var(--ibm-green-bg);color:var(--ibm-green)}
+.nav-item.active{background:var(--ibm-green);color:#fff}
+.nav-item.active .nav-icon{color:#fff}
+.nav-icon{width:16px;height:16px;flex-shrink:0}
+.nav-badge{margin-left:auto;background:#E24B4A;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px}
+.nav-item.active .nav-badge{background:rgba(255,255,255,0.25)}
+.sidebar-footer{margin-top:auto;padding:16px;border-top:0.5px solid #D3D1C7}
+.user-chip{display:flex;align-items:center;gap:10px}
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--ibm-green-bg);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--ibm-green);flex-shrink:0}
+.avatar-name{font-size:13px;font-weight:500;color:var(--ibm-gray)}
+.avatar-role{font-size:11px;color:var(--ibm-gray-mid)}
+.logout-btn{margin-top:10px;width:100%;padding:8px;background:none;border:0.5px solid #D3D1C7;border-radius:var(--radius);font-size:12px;color:var(--ibm-gray-mid);cursor:pointer}
+.logout-btn:hover{background:var(--ibm-gray-light)}
+/* ===== MAIN ===== */
+.main{margin-left:240px;padding:24px;min-height:100vh}
+.page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px}
+.page-title{font-size:28px;font-weight:500;color:var(--ibm-gray)}
+.page-sub{font-size:13px;color:var(--ibm-gray-mid);margin-top:4px}
+.header-actions{display:flex;gap:10px;align-items:center}
+.btn-primary{background:var(--ibm-green);color:#fff;border:none;padding:9px 18px;border-radius:var(--radius);font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.btn-primary:hover{background:var(--ibm-green-dark)}
+.btn-outline{background:#fff;color:var(--ibm-gray);border:0.5px solid #B4B2A9;padding:9px 18px;border-radius:var(--radius);font-size:13px;cursor:pointer}
+.btn-outline:hover{background:var(--ibm-gray-light)}
+/* ===== STATS ===== */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.stat-card{background:#fff;border-radius:var(--radius-lg);border:0.5px solid #D3D1C7;padding:16px;position:relative;overflow:hidden}
+.stat-card.highlight{background:var(--ibm-green);color:#fff}
+.stat-card.highlight .stat-label{color:rgba(255,255,255,0.75)}
+.stat-card.highlight .stat-trend{color:rgba(255,255,255,0.85)}
+.stat-label{font-size:12px;color:var(--ibm-gray-mid);margin-bottom:8px;letter-spacing:0.02em}
+.stat-value{font-size:32px;font-weight:500;line-height:1;margin-bottom:8px}
+.stat-trend{font-size:11px;color:var(--ibm-green);display:flex;align-items:center;gap:4px}
+.stat-arrow{display:inline-block;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,0.2);text-align:center;line-height:16px;font-size:10px}
+.stat-ext{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:50%;border:1.5px solid rgba(0,0,0,0.12);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:13px;color:var(--ibm-gray-mid)}
+.stat-card.highlight .stat-ext{border-color:rgba(255,255,255,0.4);color:rgba(255,255,255,0.8)}
+/* ===== CONTENT GRID ===== */
+.content-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:20px}
+.content-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{background:#fff;border-radius:var(--radius-lg);border:0.5px solid #D3D1C7;padding:18px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-title{font-size:14px;font-weight:500;color:var(--ibm-gray)}
+.card-action{font-size:12px;color:var(--ibm-green);cursor:pointer;display:flex;align-items:center;gap:4px;padding:5px 10px;border:0.5px solid #9FE1CB;border-radius:var(--radius);background:#E1F5EE}
+/* ===== REPORT LIST ===== */
+.report-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:0.5px solid #F1EFE8}
+.report-item:last-child{border-bottom:none}
+.report-icon{width:32px;height:32px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.ri-text{background:#E1F5EE}
+.ri-audio{background:#E6F1FB}
+.ri-image{background:#FAEEDA}
+.report-info{flex:1}
+.report-title{font-size:13px;font-weight:500;color:var(--ibm-gray)}
+.report-meta{font-size:11px;color:var(--ibm-gray-mid);margin-top:2px}
+.badge{padding:3px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.badge-pending{background:#FAEEDA;color:#854F0B}
+.badge-received{background:#E6F1FB;color:#185FA5}
+.badge-accepted{background:#E1F5EE;color:#0F6E56}
+.badge-rejected{background:#FCEBEB;color:#A32D2D}
+/* ===== FORM ===== */
+.form-group{margin-bottom:14px}
+.form-label{display:block;font-size:12px;color:var(--ibm-gray-mid);margin-bottom:5px;letter-spacing:0.02em}
+.form-input{width:100%;padding:9px 12px;border:0.5px solid #B4B2A9;border-radius:var(--radius);font-size:13px;color:var(--ibm-gray);background:#fff;outline:none}
+.form-input:focus{border-color:var(--ibm-green);box-shadow:0 0 0 2px rgba(15,110,86,0.12)}
+.form-textarea{width:100%;padding:9px 12px;border:0.5px solid #B4B2A9;border-radius:var(--radius);font-size:13px;color:var(--ibm-gray);resize:vertical;min-height:80px;outline:none}
+.form-textarea:focus{border-color:var(--ibm-green);box-shadow:0 0 0 2px rgba(15,110,86,0.12)}
+.type-selector{display:flex;gap:8px;margin-bottom:14px}
+.type-btn{flex:1;padding:9px;border:0.5px solid #D3D1C7;border-radius:var(--radius);font-size:12px;cursor:pointer;background:#fff;color:var(--ibm-gray-mid);text-align:center;transition:all 0.15s}
+.type-btn.active{border-color:var(--ibm-green);background:var(--ibm-green-bg);color:var(--ibm-green);font-weight:500}
+/* ===== MAP ===== */
+.map-placeholder{background:var(--ibm-gray-light);border-radius:var(--radius);height:200px;display:flex;align-items:center;justify-content:center;border:0.5px solid #D3D1C7;position:relative;overflow:hidden}
+.map-grid{position:absolute;inset:0;opacity:0.3}
+.map-dot{position:absolute;border-radius:50%;cursor:pointer}
+.map-legend{display:flex;gap:14px;margin-top:10px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ibm-gray-mid)}
+.legend-dot{width:8px;height:8px;border-radius:50%}
+/* ===== TREND ===== */
+.trend-bars{display:flex;align-items:flex-end;gap:6px;height:80px;padding-top:8px}
+.t-bar{flex:1;border-radius:4px 4px 0 0;position:relative;cursor:pointer;transition:opacity 0.15s}
+.t-bar:hover{opacity:0.85}
+.t-label{font-size:10px;color:var(--ibm-gray-mid);text-align:center;margin-top:4px}
+/* ===== PRIORITY ===== */
+.priority-list{display:flex;flex-direction:column;gap:8px}
+.priority-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--ibm-gray-light);border-radius:var(--radius)}
+.priority-badge{width:24px;height:24px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;flex-shrink:0}
+.p-alta{background:#FCEBEB;color:#A32D2D}
+.p-media{background:#FAEEDA;color:#854F0B}
+.p-baja{background:#E1F5EE;color:#0F6E56}
+.priority-info{flex:1}
+.priority-title{font-size:12px;font-weight:500;color:var(--ibm-gray)}
+.priority-detail{font-size:10px;color:var(--ibm-gray-mid);margin-top:1px}
+.priority-area{font-size:10px;color:var(--ibm-green);font-weight:500}
+/* ===== LOGIN ===== */
+.login-wrap{min-height:100vh;background:var(--ibm-gray-light);display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{background:#fff;border-radius:var(--radius-xl);border:0.5px solid #D3D1C7;width:420px;overflow:hidden}
+.login-header{background:var(--ibm-green);padding:28px 32px}
+.login-logo{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.login-logo-icon{width:36px;height:36px;background:rgba(255,255,255,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center}
+.login-logo-text{font-size:18px;font-weight:500;color:#fff}
+.login-logo-sub{font-size:10px;color:rgba(255,255,255,0.7);letter-spacing:0.08em;text-transform:uppercase}
+.login-title{font-size:20px;font-weight:500;color:#fff}
+.login-sub{font-size:13px;color:rgba(255,255,255,0.75);margin-top:4px}
+.login-body{padding:28px 32px}
+.role-selector{display:flex;gap:10px;margin-bottom:18px}
+.role-btn{flex:1;padding:12px 8px;border:0.5px solid #D3D1C7;border-radius:var(--radius);text-align:center;cursor:pointer;transition:all 0.15s}
+.role-btn.selected{border-color:var(--ibm-green);background:var(--ibm-green-bg)}
+.role-btn-icon{font-size:20px;margin-bottom:4px}
+.role-btn-label{font-size:12px;font-weight:500;color:var(--ibm-gray)}
+.role-btn-sub{font-size:10px;color:var(--ibm-gray-mid);margin-top:1px}
+.role-btn.selected .role-btn-label{color:var(--ibm-green)}
+/* ===== TOPBAR ===== */
+.topbar{background:#fff;border-bottom:0.5px solid #D3D1C7;padding:0 24px;height:56px;display:flex;align-items:center;gap:16px;margin-left:240px}
+.topbar-search{flex:1;max-width:340px;display:flex;align-items:center;gap:8px;background:var(--ibm-gray-light);border-radius:var(--radius);padding:8px 12px}
+.topbar-search input{border:none;background:none;font-size:13px;outline:none;width:100%;color:var(--ibm-gray)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.topbar-icon{width:32px;height:32px;border-radius:50%;background:var(--ibm-gray-light);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+/* ===== AUDIO RECORDER ===== */
+.recorder{border:0.5px dashed #9FE1CB;border-radius:var(--radius);padding:14px;text-align:center;background:var(--ibm-green-bg)}
+.rec-btn{width:44px;height:44px;border-radius:50%;background:var(--ibm-green);border:none;cursor:pointer;margin:0 auto 8px;display:flex;align-items:center;justify-content:center}
+.rec-btn svg{fill:#fff}
+.rec-label{font-size:12px;color:var(--ibm-green)}
+.rec-transcript{background:#fff;border:0.5px solid #9FE1CB;border-radius:var(--radius);padding:10px;font-size:12px;color:var(--ibm-gray-mid);margin-top:8px;text-align:left;font-style:italic}
+/* ===== IMG UPLOAD ===== */
+.img-upload{border:0.5px dashed #B4B2A9;border-radius:var(--radius);padding:14px;text-align:center;cursor:pointer;background:#FAFAF8}
+.img-upload-icon{font-size:24px;margin-bottom:4px}
+.img-upload-label{font-size:12px;color:var(--ibm-gray-mid)}
+/* ===== CUADRANTE ===== */
+.cuadrante-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.cuad-cell{border-radius:var(--radius);padding:10px 8px;text-align:center;cursor:pointer;border:0.5px solid transparent;transition:all 0.15s}
+.cuad-cell:hover{border-color:var(--ibm-green)}
+.cuad-name{font-size:11px;font-weight:500}
+.cuad-count{font-size:18px;font-weight:500;margin:2px 0}
+.cuad-delta{font-size:10px}
+</style>
+
+<div id="app">
+
+<!-- ===== LOGIN ===== -->
+<div id="view-login" class="login-wrap">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">
+        <div class="login-logo-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        </div>
+        <div>
+          <div class="login-logo-text">CiudadActiva</div>
+          <div class="login-logo-sub">IBM · Gobierno Digital</div>
+        </div>
+      </div>
+      <div class="login-title">Bienvenido al sistema</div>
+      <div class="login-sub">Gestión de reportes ciudadanos y análisis territorial</div>
+    </div>
+    <div class="login-body">
+      <div id="login-step-1">
+        <p style="font-size:12px;color:var(--ibm-gray-mid);margin-bottom:12px;letter-spacing:0.04em;text-transform:uppercase">Soy…</p>
+        <div class="role-selector">
+          <div class="role-btn" id="role-citizen" onclick="selectRole('citizen')">
+            <div class="role-btn-icon">👤</div>
+            <div class="role-btn-label">Ciudadano</div>
+            <div class="role-btn-sub">Enviar reportes</div>
+          </div>
+          <div class="role-btn" id="role-gov" onclick="selectRole('gov')">
+            <div class="role-btn-icon">🏛️</div>
+            <div class="role-btn-label">Trabajador de gobierno</div>
+            <div class="role-btn-sub">Gestionar y analizar</div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Correo electrónico</label>
+          <input class="form-input" type="email" placeholder="usuario@correo.com" id="login-email"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <input class="form-input" type="password" placeholder="••••••••" id="login-pass"/>
+        </div>
+        <button class="btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="doLogin()">Ingresar al sistema</button>
+        <p style="text-align:center;font-size:12px;color:var(--ibm-gray-mid);margin-top:14px">¿No tienes cuenta? <span style="color:var(--ibm-green);cursor:pointer" onclick="showRegister()">Regístrate aquí</span></p>
+      </div>
+      <div id="login-step-reg" class="hidden">
+        <p style="font-size:12px;color:var(--ibm-gray-mid);margin-bottom:12px">Tipo de cuenta</p>
+        <div class="role-selector" style="margin-bottom:14px">
+          <div class="role-btn selected" id="reg-citizen" onclick="selectRegRole('citizen')">
+            <div class="role-btn-label">Ciudadano</div>
+          </div>
+          <div class="role-btn" id="reg-gov" onclick="selectRegRole('gov')">
+            <div class="role-btn-label">Gobierno</div>
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">Nombre completo</label><input class="form-input" placeholder="Ej. María González"/></div>
+        <div class="form-group"><label class="form-label">Correo electrónico</label><input class="form-input" type="email" placeholder="usuario@correo.com"/></div>
+        <div class="form-group" id="reg-curp-group"><label class="form-label">CURP</label><input class="form-input" placeholder="18 caracteres"/></div>
+        <div class="form-group" id="reg-id-group" class="hidden"><label class="form-label">ID de empleado</label><input class="form-input" placeholder="Número de empleado"/></div>
+        <div class="form-group"><label class="form-label">Contraseña</label><input class="form-input" type="password" placeholder="Mínimo 8 caracteres"/></div>
+        <button class="btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">Crear cuenta e ingresar</button>
+        <p style="text-align:center;font-size:12px;color:var(--ibm-gray-mid);margin-top:12px"><span style="color:var(--ibm-green);cursor:pointer" onclick="showLogin()">← Volver al inicio de sesión</span></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CITIZEN DASHBOARD ===== -->
+<div id="view-citizen" class="hidden">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg></div>
+      <div><div class="logo-text">CiudadActiva</div><div class="logo-sub">IBM · Ciudadano</div></div>
+    </div>
+    <div class="nav-section">menú</div>
+    <div class="nav-item active" onclick="citizenNav('dashboard',this)"><span class="nav-icon">◉</span> Dashboard</div>
+    <div class="nav-item" onclick="citizenNav('nuevo-reporte',this)"><span class="nav-icon">＋</span> Nuevo reporte <span class="nav-badge">!</span></div>
+    <div class="nav-item" onclick="citizenNav('mis-reportes',this)"><span class="nav-icon">≡</span> Mis reportes <span class="nav-badge">3</span></div>
+    <div class="nav-section">general</div>
+    <div class="nav-item"><span class="nav-icon">⚙</span> Configuración</div>
+    <div class="nav-item"><span class="nav-icon">?</span> Ayuda</div>
+    <div class="sidebar-footer">
+      <div class="user-chip"><div class="avatar">MC</div><div><div class="avatar-name">María Ciudadana</div><div class="avatar-role">Ciudadana verificada</div></div></div>
+      <button class="logout-btn" onclick="goLogin()">Cerrar sesión</button>
+    </div>
+  </div>
+  <div class="topbar">
+    <div class="topbar-search"><span style="font-size:14px;color:var(--ibm-gray-mid)">⌕</span><input placeholder="Buscar reporte..."/></div>
+    <div class="topbar-right"><div class="topbar-icon">✉</div><div class="topbar-icon">🔔</div><div class="avatar" style="width:36px;height:36px;font-size:13px">MC</div></div>
+  </div>
+
+  <!-- Dashboard home -->
+  <div class="main" id="citizen-dashboard" style="padding-top:80px">
+    <div class="page-header">
+      <div><div class="page-title">Mi panel</div><div class="page-sub">Gestiona tus reportes y consulta su estado en tiempo real.</div></div>
+      <div class="header-actions">
+        <button class="btn-primary" onclick="citizenNav('nuevo-reporte',null)">＋ Nuevo reporte</button>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card highlight"><div class="stat-label">Total de reportes</div><div class="stat-value">7</div><div class="stat-trend"><span class="stat-arrow">↑</span> +2 este mes</div><div class="stat-ext">↗</div></div>
+      <div class="stat-card"><div class="stat-label">Pendientes</div><div class="stat-value">2</div><div class="stat-trend" style="color:var(--ibm-gray-mid)">Esperando revisión</div><div class="stat-ext">↗</div></div>
+      <div class="stat-card"><div class="stat-label">En proceso</div><div class="stat-value">3</div><div class="stat-trend">Recibidos por área</div><div class="stat-ext">↗</div></div>
+      <div class="stat-card"><div class="stat-label">Resueltos</div><div class="stat-value">2</div><div class="stat-trend">Cerrados este mes</div><div class="stat-ext">↗</div></div>
+    </div>
+    <div class="content-grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Actividad reciente</span><span class="card-action" onclick="citizenNav('mis-reportes',null)">Ver todos ↗</span></div>
+        <div class="report-item"><div class="report-icon ri-text">📝</div><div class="report-info"><div class="report-title">Bache en Av. Insurgentes 320</div><div class="report-meta">Hace 2 días</div></div><span class="badge badge-accepted">Aceptado</span></div>
+        <div class="report-item"><div class="report-icon ri-audio">🎙</div><div class="report-info"><div class="report-title">Alumbrado público apagado</div><div class="report-meta">Hace 4 días</div></div><span class="badge badge-received">Recibido</span></div>
+        <div class="report-item"><div class="report-icon ri-image">🖼</div><div class="report-info"><div class="report-title">Basura sin recoger — Col. Centro</div><div class="report-meta">Hace 6 días</div></div><span class="badge badge-pending">Pendiente</span></div>
+        <div class="report-item"><div class="report-icon ri-text">📝</div><div class="report-info"><div class="report-title">Fuga de agua — Calle Morelos</div><div class="report-meta">Hace 9 días</div></div><span class="badge badge-rejected">Rechazado</span></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Estado de reportes aceptados</span></div>
+        <div class="priority-list">
+          <div class="priority-item"><div class="priority-badge p-alta">A</div><div class="priority-info"><div class="priority-title">Bache en Av. Insurgentes 320</div><div class="priority-detail">Motivo: Riesgo vial inmediato</div></div><div class="priority-area">Infraestructura Vial</div></div>
+          <div class="priority-item" style="opacity:0.5"><div class="priority-badge p-baja">B</div><div class="priority-info"><div class="priority-title">Luminaria Col. Doctores</div><div class="priority-detail">Motivo: Afectación parcial de zona</div></div><div class="priority-area">Servicios Públicos</div></div>
+        </div>
+        <p style="font-size:11px;color:var(--ibm-gray-mid);margin-top:14px;padding:10px;background:var(--ibm-green-bg);border-radius:var(--radius)">A = Alta prioridad &nbsp;·&nbsp; M = Media &nbsp;·&nbsp; B = Baja</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nuevo reporte -->
+  <div class="main hidden" id="citizen-nuevo-reporte" style="padding-top:80px">
+    <div class="page-header"><div><div class="page-title">Nuevo reporte</div><div class="page-sub">Describe el problema de tu colonia. Elige el tipo de reporte.</div></div></div>
+    <div style="max-width:560px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tipo de reporte</span></div>
+        <div class="type-selector">
+          <div class="type-btn active" id="type-text" onclick="selectType('text')">📝 Texto</div>
+          <div class="type-btn" id="type-audio" onclick="selectType('audio')">🎙 Audio</div>
+          <div class="type-btn" id="type-image" onclick="selectType('image')">🖼 Imagen</div>
+        </div>
+        <div id="report-form-text">
+          <div class="form-group"><label class="form-label">Título del reporte</label><input class="form-input" placeholder="Ej. Bache profundo en Av. Juárez"/></div>
+          <div class="form-group"><label class="form-label">Descripción detallada</label><textarea class="form-textarea" placeholder="Describe el problema: ubicación exacta, tiempo que lleva presente, nivel de afectación..."></textarea></div>
+          <div class="form-group"><label class="form-label">Ubicación (colonia o referencia)</label><input class="form-input" placeholder="Ej. Col. Roma Norte, entre Sonora y Veracruz"/></div>
+          <button class="btn-primary" style="width:100%;justify-content:center">Enviar reporte</button>
+        </div>
+        <div id="report-form-audio" class="hidden">
+          <div class="form-group"><label class="form-label">Título del reporte</label><input class="form-input" placeholder="Ej. Alumbrado público"/></div>
+          <div class="recorder">
+            <button class="rec-btn" id="rec-toggle" onclick="toggleRec()"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg></button>
+            <div class="rec-label" id="rec-label">Toca para grabar</div>
+            <div class="rec-transcript hidden" id="rec-transcript">Transcripción automática aparecerá aquí una vez que detengas la grabación. El audio se convierte a texto para facilitar el seguimiento.</div>
+          </div>
+          <div class="form-group" style="margin-top:12px"><label class="form-label">Ubicación</label><input class="form-input" placeholder="Colonia o referencia"/></div>
+          <button class="btn-primary" style="width:100%;justify-content:center;margin-top:4px">Enviar reporte</button>
+        </div>
+        <div id="report-form-image" class="hidden">
+          <div class="form-group"><label class="form-label">Título del reporte</label><input class="form-input" placeholder="Ej. Basura acumulada"/></div>
+          <div class="img-upload" onclick="this.style.borderColor='var(--ibm-green)'">
+            <div class="img-upload-icon">📎</div>
+            <div class="img-upload-label">Haz clic o arrastra una imagen aquí</div>
+            <p style="font-size:10px;color:var(--ibm-gray-mid);margin-top:4px">PNG, JPG o HEIF · Máx 10 MB</p>
+          </div>
+          <div class="form-group" style="margin-top:12px"><label class="form-label">Descripción breve de la imagen</label><textarea class="form-textarea" placeholder="¿Qué muestra la imagen? ¿Cuál es el problema visible?" style="min-height:60px"></textarea></div>
+          <div class="form-group"><label class="form-label">Ubicación</label><input class="form-input" placeholder="Colonia o referencia"/></div>
+          <button class="btn-primary" style="width:100%;justify-content:center">Enviar reporte</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mis reportes -->
+  <div class="main hidden" id="citizen-mis-reportes" style="padding-top:80px">
+    <div class="page-header"><div><div class="page-title">Mis reportes</div><div class="page-sub">Consulta el estado y seguimiento de cada uno.</div></div></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="btn-primary" style="font-size:12px;padding:6px 12px">Todos</button>
+      <button class="btn-outline" style="font-size:12px;padding:6px 12px">Pendiente</button>
+      <button class="btn-outline" style="font-size:12px;padding:6px 12px">Recibido</button>
+      <button class="btn-outline" style="font-size:12px;padding:6px 12px">Aceptado</button>
+      <button class="btn-outline" style="font-size:12px;padding:6px 12px">Rechazado</button>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="report-icon ri-text" style="width:36px;height:36px;font-size:16px">📝</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:14px;font-weight:500">Bache en Av. Insurgentes 320</span>
+              <span class="badge badge-accepted">Aceptado</span>
+            </div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Enviado hace 2 días · Texto · Col. Hipódromo</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding:10px;background:var(--ibm-green-bg);border-radius:var(--radius);display:flex;gap:16px;flex-wrap:wrap">
+          <div><div style="font-size:10px;color:var(--ibm-gray-mid)">Prioridad</div><div style="font-size:12px;font-weight:500;color:#A32D2D">Alta</div></div>
+          <div><div style="font-size:10px;color:var(--ibm-gray-mid)">Área asignada</div><div style="font-size:12px;font-weight:500;color:var(--ibm-green)">Infraestructura Vial</div></div>
+          <div style="flex:1"><div style="font-size:10px;color:var(--ibm-gray-mid)">Motivo de clasificación</div><div style="font-size:12px;color:var(--ibm-gray)">Riesgo vial inmediato en vía primaria</div></div>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="report-icon ri-audio" style="width:36px;height:36px;font-size:16px">🎙</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:500">Alumbrado público apagado</span><span class="badge badge-received">Recibido</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Enviado hace 4 días · Audio · Col. Narvarte</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="report-icon ri-image" style="width:36px;height:36px;font-size:16px">🖼</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:500">Basura sin recoger — Col. Centro</span><span class="badge badge-pending">Pendiente</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Enviado hace 6 días · Imagen</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="report-icon ri-text" style="width:36px;height:36px;font-size:16px">📝</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:500">Fuga de agua — Calle Morelos</span><span class="badge badge-rejected">Rechazado</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Enviado hace 9 días · Texto · Col. Santa María</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px 10px;background:#FCEBEB;border-radius:var(--radius);font-size:11px;color:#A32D2D">Motivo de rechazo: El reporte no incluye suficiente detalle para verificar la ubicación.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== GOVERNMENT DASHBOARD ===== -->
+<div id="view-gov" class="hidden">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg></div>
+      <div><div class="logo-text">CiudadActiva</div><div class="logo-sub">IBM · Gobierno</div></div>
+    </div>
+    <div class="nav-section">panel</div>
+    <div class="nav-item active" onclick="govNav('overview',this)"><span class="nav-icon">◉</span> Resumen general</div>
+    <div class="nav-item" onclick="govNav('reportes',this)"><span class="nav-icon">≡</span> Reportes priorizados <span class="nav-badge">47</span></div>
+    <div class="nav-item" onclick="govNav('mapa',this)"><span class="nav-icon">◎</span> Mapa interactivo</div>
+    <div class="nav-item" onclick="govNav('tendencias',this)"><span class="nav-icon">↗</span> Análisis de tendencias</div>
+    <div class="nav-section">general</div>
+    <div class="nav-item"><span class="nav-icon">⚙</span> Configuración</div>
+    <div class="nav-item"><span class="nav-icon">?</span> Ayuda</div>
+    <div class="sidebar-footer">
+      <div class="user-chip"><div class="avatar" style="background:#E6F1FB;color:#185FA5">JG</div><div><div class="avatar-name">Juan Gobierno</div><div class="avatar-role">Trabajador · Zona Norte</div></div></div>
+      <button class="logout-btn" onclick="goLogin()">Cerrar sesión</button>
+    </div>
+  </div>
+  <div class="topbar">
+    <div class="topbar-search"><span style="font-size:14px;color:var(--ibm-gray-mid)">⌕</span><input placeholder="Buscar reporte, colonia..."/></div>
+    <div class="topbar-right"><div class="topbar-icon">✉</div><div class="topbar-icon">🔔</div><div class="avatar" style="width:36px;height:36px;font-size:13px;background:#E6F1FB;color:#185FA5">JG</div></div>
+  </div>
+
+  <!-- Gov Overview -->
+  <div class="main" id="gov-overview" style="padding-top:80px">
+    <div class="page-header">
+      <div><div class="page-title">Panel de gobierno</div><div class="page-sub">Reportes ciudadanos priorizados por zona y categoría.</div></div>
+      <div class="header-actions"><button class="btn-outline">Exportar datos</button><button class="btn-primary">＋ Asignar área</button></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card highlight"><div class="stat-label">Reportes activos</div><div class="stat-value">47</div><div class="stat-trend"><span class="stat-arrow">↑</span> +12 esta semana</div></div>
+      <div class="stat-card"><div class="stat-label">Alta prioridad</div><div class="stat-value" style="color:#A32D2D">14</div><div class="stat-trend" style="color:#A32D2D">Requieren atención urgente</div></div>
+      <div class="stat-card"><div class="stat-label">En proceso</div><div class="stat-value">21</div><div class="stat-trend">Asignados a áreas</div></div>
+      <div class="stat-card"><div class="stat-label">Resueltos hoy</div><div class="stat-value">6</div><div class="stat-trend">+3 vs ayer</div></div>
+    </div>
+    <div class="content-grid">
+      <div class="card" style="grid-column:1/3">
+        <div class="card-header"><span class="card-title">Reportes por colonia y prioridad</span><span class="card-action" onclick="govNav('reportes',null)">Ver todos ↗</span></div>
+        <div class="cuadrante-grid">
+          <div class="cuad-cell" style="background:#FCEBEB"><div class="cuad-name" style="color:#A32D2D">Col. Centro</div><div class="cuad-count" style="color:#A32D2D">12</div><div class="cuad-delta" style="color:#A32D2D">↑ alta</div></div>
+          <div class="cuad-cell" style="background:#FAEEDA"><div class="cuad-name" style="color:#854F0B">Hipódromo</div><div class="cuad-count" style="color:#854F0B">8</div><div class="cuad-delta" style="color:#854F0B">→ media</div></div>
+          <div class="cuad-cell" style="background:#E1F5EE"><div class="cuad-name" style="color:#0F6E56">Narvarte</div><div class="cuad-count" style="color:#0F6E56">6</div><div class="cuad-delta" style="color:#0F6E56">↓ baja</div></div>
+          <div class="cuad-cell" style="background:#FAEEDA"><div class="cuad-name" style="color:#854F0B">Roma Norte</div><div class="cuad-count" style="color:#854F0B">9</div><div class="cuad-delta" style="color:#854F0B">→ media</div></div>
+          <div class="cuad-cell" style="background:#FCEBEB"><div class="cuad-name" style="color:#A32D2D">Doctores</div><div class="cuad-count" style="color:#A32D2D">7</div><div class="cuad-delta" style="color:#A32D2D">↑ alta</div></div>
+          <div class="cuad-cell" style="background:#E1F5EE"><div class="cuad-name" style="color:#0F6E56">Del Valle</div><div class="cuad-count" style="color:#0F6E56">5</div><div class="cuad-delta" style="color:#0F6E56">↓ baja</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Tipos más frecuentes</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;width:120px;color:var(--ibm-gray-mid)">Infraestructura vial</span><div style="flex:1;height:8px;background:var(--ibm-gray-light);border-radius:4px"><div style="width:75%;height:100%;background:var(--ibm-green);border-radius:4px"></div></div><span style="font-size:12px;font-weight:500;margin-left:6px">18</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;width:120px;color:var(--ibm-gray-mid)">Servicios públicos</span><div style="flex:1;height:8px;background:var(--ibm-gray-light);border-radius:4px"><div style="width:55%;height:100%;background:var(--ibm-green-mid);border-radius:4px"></div></div><span style="font-size:12px;font-weight:500;margin-left:6px">13</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;width:120px;color:var(--ibm-gray-mid)">Residuos</span><div style="flex:1;height:8px;background:var(--ibm-gray-light);border-radius:4px"><div style="width:35%;height:100%;background:#97C459;border-radius:4px"></div></div><span style="font-size:12px;font-weight:500;margin-left:6px">9</span></div>
+          <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;width:120px;color:var(--ibm-gray-mid)">Seguridad</span><div style="flex:1;height:8px;background:var(--ibm-gray-light);border-radius:4px"><div style="width:20%;height:100%;background:#C0DD97;border-radius:4px"></div></div><span style="font-size:12px;font-weight:500;margin-left:6px">7</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reportes priorizados -->
+  <div class="main hidden" id="gov-reportes" style="padding-top:80px">
+    <div class="page-header"><div><div class="page-title">Reportes priorizados</div><div class="page-sub">Ordenados por prioridad · Agrupados por zona · Con análisis IA</div></div><button class="btn-outline">Filtrar</button></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="card" style="padding:14px 16px;border-left:3px solid #A32D2D;border-radius:0 var(--radius-lg) var(--radius-lg) 0">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div class="priority-badge p-alta" style="width:32px;height:32px;font-size:13px">A</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:14px;font-weight:500">Bache profundo — Av. Insurgentes 320</span><span class="badge badge-accepted">Aceptado</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Col. Hipódromo · Infraestructura Vial · Hace 2 días</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ibm-gray);background:var(--ibm-gray-light);padding:8px 10px;border-radius:var(--radius)">Motivo IA: Vía primaria con alto tráfico. Riesgo de accidente. 3 reportes previos en la misma ubicación.</div>
+          </div>
+          <button class="btn-outline" style="font-size:11px;padding:5px 10px;flex-shrink:0">Asignar</button>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px;border-left:3px solid #854F0B;border-radius:0 var(--radius-lg) var(--radius-lg) 0">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div class="priority-badge p-media" style="width:32px;height:32px;font-size:13px">M</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:500">Luminaria sin funcionar — Col. Doctores</span><span class="badge badge-received">Recibido</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Zona 3 · Servicios Públicos · Hace 3 días</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ibm-gray);background:var(--ibm-gray-light);padding:8px 10px;border-radius:var(--radius)">Motivo IA: Afectación parcial. No es zona de alto riesgo pero impacta movilidad nocturna.</div>
+          </div>
+          <button class="btn-outline" style="font-size:11px;padding:5px 10px;flex-shrink:0">Asignar</button>
+        </div>
+      </div>
+      <div class="card" style="padding:14px 16px;border-left:3px solid #0F6E56;border-radius:0 var(--radius-lg) var(--radius-lg) 0">
+        <div style="display:flex;align-items:flex-start;gap:12px">
+          <div class="priority-badge p-baja" style="width:32px;height:32px;font-size:13px">B</div>
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px;font-weight:500">Basura acumulada — Col. Narvarte</span><span class="badge badge-pending">Pendiente</span></div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">Zona 5 · Limpieza y Residuos · Hace 6 días</div>
+            <div style="margin-top:8px;font-size:12px;color:var(--ibm-gray);background:var(--ibm-gray-light);padding:8px 10px;border-radius:var(--radius)">Motivo IA: Zona residencial tranquila. Sin impacto crítico. Programar en próxima ronda.</div>
+          </div>
+          <button class="btn-outline" style="font-size:11px;padding:5px 10px;flex-shrink:0">Asignar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mapa interactivo -->
+  <div class="main hidden" id="gov-mapa" style="padding-top:80px">
+    <div class="page-header"><div><div class="page-title">Mapa interactivo</div><div class="page-sub">Reportes por colonia y cuadrante · Haz clic en un punto para ver el historial</div></div></div>
+    <div class="content-grid-2">
+      <div class="card" style="grid-column:1/3">
+        <div class="card-header"><span class="card-title">Distribución territorial — Ciudad</span><span style="font-size:12px;color:var(--ibm-gray-mid)">Actualizado hace 5 min</span></div>
+        <div class="map-placeholder" id="mapa-canvas">
+          <svg width="100%" height="100%" style="position:absolute;inset:0">
+            <defs><pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#D3D1C7" stroke-width="0.5"/></pattern></defs>
+            <rect width="100%" height="100%" fill="url(#grid)"/>
+            <circle cx="50%" cy="45%" r="5" fill="#A32D2D" opacity="0.9" class="map-dot" style="cursor:pointer" onclick="mapClick('Centro','12 reportes','Alta prioridad')"/>
+            <circle cx="60%" cy="35%" r="4" fill="#854F0B" opacity="0.9" class="map-dot" onclick="mapClick('Hipódromo','8 reportes','Media')"/>
+            <circle cx="40%" cy="55%" r="3" fill="#0F6E56" opacity="0.9" class="map-dot" onclick="mapClick('Narvarte','6 reportes','Baja')"/>
+            <circle cx="65%" cy="50%" r="4" fill="#854F0B" opacity="0.9" class="map-dot" onclick="mapClick('Roma Norte','9 reportes','Media')"/>
+            <circle cx="45%" cy="38%" r="4" fill="#A32D2D" opacity="0.9" class="map-dot" onclick="mapClick('Doctores','7 reportes','Alta')"/>
+            <circle cx="55%" cy="62%" r="3" fill="#0F6E56" opacity="0.9" class="map-dot" onclick="mapClick('Del Valle','5 reportes','Baja')"/>
+            <text x="50%" y="45%" dy="-10" text-anchor="middle" font-size="10" fill="var(--ibm-gray-mid)">Centro</text>
+            <text x="60%" y="35%" dy="-9" text-anchor="middle" font-size="10" fill="var(--ibm-gray-mid)">Hipódromo</text>
+            <text x="40%" y="55%" dy="-8" text-anchor="middle" font-size="10" fill="var(--ibm-gray-mid)">Narvarte</text>
+          </svg>
+          <div id="map-popup" style="position:absolute;bottom:16px;right:16px;background:#fff;border:0.5px solid #D3D1C7;border-radius:var(--radius);padding:12px 14px;font-size:12px;min-width:160px;display:none">
+            <div id="map-popup-title" style="font-weight:500;color:var(--ibm-gray);margin-bottom:4px"></div>
+            <div id="map-popup-count" style="color:var(--ibm-green)"></div>
+            <div id="map-popup-level" style="color:var(--ibm-gray-mid);margin-top:2px"></div>
+          </div>
+        </div>
+        <div class="map-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:#A32D2D"></div>Alta prioridad</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#854F0B"></div>Media prioridad</div>
+          <div class="legend-item"><div class="legend-dot" style="background:#0F6E56"></div>Baja prioridad</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tendencias -->
+  <div class="main hidden" id="gov-tendencias" style="padding-top:80px">
+    <div class="page-header"><div><div class="page-title">Análisis de tendencias</div><div class="page-sub">Evolución semanal · Reportes por tipo y zona</div></div></div>
+    <div class="content-grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Reportes por día (últimos 7 días)</span></div>
+        <div class="trend-bars" id="trend-bars-container">
+          <div style="flex:1"><div class="t-bar" style="height:60%;background:var(--ibm-green);opacity:0.7" title="Lun: 8"></div><div class="t-label">L</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:80%;background:var(--ibm-green)" title="Mar: 11"></div><div class="t-label">M</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:100%;background:var(--ibm-green-dark)" title="Mié: 14"></div><div class="t-label">X</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:70%;background:var(--ibm-green);opacity:0.7" title="Jue: 10"></div><div class="t-label">J</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:55%;background:var(--ibm-green);opacity:0.6" title="Vie: 8"></div><div class="t-label">V</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:30%;background:var(--ibm-green-mid)" title="Sáb: 4"></div><div class="t-label">S</div></div>
+          <div style="flex:1"><div class="t-bar" style="height:20%;background:var(--ibm-green-mid)" title="Dom: 3"></div><div class="t-label">D</div></div>
+        </div>
+        <p style="font-size:11px;color:var(--ibm-gray-mid);margin-top:8px">Pico: miércoles · Promedio semanal: 8.3 reportes/día</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Alertas de tendencia</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="padding:10px;background:#FCEBEB;border-radius:var(--radius);border-left:3px solid #A32D2D">
+            <div style="font-size:12px;font-weight:500;color:#A32D2D">↑ Aumento inusual en Col. Centro</div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">+40% vs semana anterior · Revisar zona</div>
+          </div>
+          <div style="padding:10px;background:#FAEEDA;border-radius:var(--radius);border-left:3px solid #854F0B">
+            <div style="font-size:12px;font-weight:500;color:#854F0B">→ Tendencia sostenida — Infraestructura Vial</div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">18 reportes acumulados en 2 semanas</div>
+          </div>
+          <div style="padding:10px;background:#E1F5EE;border-radius:var(--radius);border-left:3px solid #0F6E56">
+            <div style="font-size:12px;font-weight:500;color:#0F6E56">↓ Reducción en residuos — Narvarte</div>
+            <div style="font-size:11px;color:var(--ibm-gray-mid);margin-top:3px">-25% vs semana anterior · Buen indicador</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+let selectedRole='';
+let selectedRegRole='citizen';
+let recActive=false;
+
+function selectRole(r){
+  selectedRole=r;
+  document.querySelectorAll('.role-btn').forEach(b=>b.classList.remove('selected'));
+  document.getElementById('role-'+r).classList.add('selected');
+}
+function showRegister(){document.getElementById('login-step-1').classList.add('hidden');document.getElementById('login-step-reg').classList.remove('hidden');}
+function showLogin(){document.getElementById('login-step-reg').classList.add('hidden');document.getElementById('login-step-1').classList.remove('hidden');}
+function selectRegRole(r){
+  selectedRegRole=r;
+  ['citizen','gov'].forEach(x=>{document.getElementById('reg-'+x).classList.toggle('selected',x===r);});
+  document.getElementById('reg-curp-group').style.display=r==='citizen'?'block':'none';
+  document.getElementById('reg-id-group').style.display=r==='gov'?'block':'none';
+}
+function doLogin(){
+  var r=selectedRole||selectedRegRole;
+  document.getElementById('view-login').classList.add('hidden');
+  if(r==='gov'){document.getElementById('view-gov').classList.remove('hidden');}
+  else{document.getElementById('view-citizen').classList.remove('hidden');}
+}
+function goLogin(){
+  ['view-login','view-citizen','view-gov'].forEach(id=>{
+    var el=document.getElementById(id);
+    if(id==='view-login')el.classList.remove('hidden');else el.classList.add('hidden');
+  });
+  selectedRole='';
+}
+function citizenNav(section,el){
+  if(el){document.querySelectorAll('#view-citizen .nav-item').forEach(n=>n.classList.remove('active'));el.classList.add('active');}
+  ['dashboard','nuevo-reporte','mis-reportes'].forEach(s=>{
+    var el2=document.getElementById('citizen-'+s);
+    if(el2){if(s===section)el2.classList.remove('hidden');else el2.classList.add('hidden');}
+  });
+}
+function govNav(section,el){
+  if(el){document.querySelectorAll('#view-gov .nav-item').forEach(n=>n.classList.remove('active'));el.classList.add('active');}
+  ['overview','reportes','mapa','tendencias'].forEach(s=>{
+    var el2=document.getElementById('gov-'+s);
+    if(el2){if(s===section)el2.classList.remove('hidden');else el2.classList.add('hidden');}
+  });
+}
+function selectType(t){
+  ['text','audio','image'].forEach(x=>{
+    document.getElementById('type-'+x).classList.toggle('active',x===t);
+    document.getElementById('report-form-'+x).classList.toggle('hidden',x!==t);
+  });
+}
+function toggleRec(){
+  recActive=!recActive;
+  var btn=document.getElementById('rec-toggle');
+  var lbl=document.getElementById('rec-label');
+  var tr=document.getElementById('rec-transcript');
+  if(recActive){btn.style.background='#E24B4A';lbl.textContent='Grabando… toca para detener';}
+  else{btn.style.background='var(--ibm-green)';lbl.textContent='Toca para grabar';tr.classList.remove('hidden');tr.textContent='"Hay un bache muy grande en la avenida Insurgentes, entre Sonora y Veracruz, tiene varios días y ya causó un accidente de bicicleta."';}
+}
+function mapClick(name,count,level){
+  var p=document.getElementById('map-popup');
+  document.getElementById('map-popup-title').textContent=name;
+  document.getElementById('map-popup-count').textContent=count;
+  document.getElementById('map-popup-level').textContent='Prioridad: '+level;
+  p.style.display='block';
+}
+document.getElementById('reg-curp-group').style.display='block';
+document.getElementById('reg-id-group').style.display='none';
+</script>

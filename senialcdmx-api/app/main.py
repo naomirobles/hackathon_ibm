@@ -18,6 +18,13 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Precarga todas las capas GeoJSON/GeoPackage al arrancar el servidor."""
+    from app.services.layer_fetcher import load_all_layers
+    load_all_layers()
+
+
 @app.post("/reports", response_model=schemas.ReportCreatedResponse, status_code=202)
 async def create_report(
     payload: schemas.ReportCreate,
