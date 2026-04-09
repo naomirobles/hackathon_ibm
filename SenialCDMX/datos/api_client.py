@@ -46,15 +46,30 @@ def get_report_maps(report_id: str) -> dict:
         return {"error": str(e), "maps": {}}
 
 
+_DB_A_CATEGORIA = {
+    "medio_ambiente":  "riesgos",
+    "areas_verdes":    "riesgos",
+    "infraestructura": "movilidad",
+    "transporte":      "movilidad",
+    "servicios":       "movilidad",
+    "seguridad":       "movilidad",
+    # Por si la API ya devuelve el valor correcto
+    "riesgos":         "riesgos",
+    "movilidad":       "movilidad",
+}
+
+
 def api_a_fila(r: dict) -> dict:
     """Convierte un item de GET /reports al formato que esperan las tablas."""
     fecha = (r.get("created_at") or "")[:10] or "N/D"
     prioridad = r.get("prioridad") or "pendiente"
+    cat_raw = r.get("categoria") or "movilidad"
+    categoria = _DB_A_CATEGORIA.get(str(cat_raw), "movilidad")
     return {
         "id":          r.get("codigo") or r.get("report_id", "")[:8],
         "tipo":        "—",
         "descripcion": r.get("alcaldia") or r.get("status") or "—",
-        "categoria":   r.get("categoria") or "infraestructura",
+        "categoria":   categoria,
         "prioridad":   prioridad,
         "probabilidad": int(r.get("probabilidad_atencion") or 0),
         "fecha":       fecha,

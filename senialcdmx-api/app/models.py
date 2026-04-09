@@ -33,7 +33,7 @@ rol_usuario = Enum(
 )
 
 categoria_reporte = Enum(
-    "infraestructura", "seguridad", "areas_verdes", "servicios", "transporte", "medio_ambiente",
+    "riesgo", "movilidad", "otro",
     name="categoria_reporte",
     create_type=False,
 )
@@ -61,7 +61,7 @@ class Reporte(Base):
     descripcion       = Column(Text, nullable=False)
     descripcion_audio = Column(Text, nullable=True)
     # categoria usa el ENUM de la DB; se actualiza tras clasificación Watson x
-    categoria         = Column(categoria_reporte, nullable=False, default="infraestructura")
+    categoria         = Column(categoria_reporte, nullable=False, default="otro")
     estado            = Column(estado_reporte, nullable=False,
                                server_default=text("'recibido'::estado_reporte"))
 

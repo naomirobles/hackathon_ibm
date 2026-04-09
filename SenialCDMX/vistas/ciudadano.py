@@ -507,10 +507,20 @@ def mostrar_mapas(maps_data):
 # ── Resultado real de IA ──────────────────────────────────────────────────────
 
 _BADGE_PRIORIDAD = {"alta": "badge-alta", "media": "badge-media", "baja": "badge-baja"}
+
+# Mapeo de TODOS los valores posibles que puede devolver la API
+# (tanto los valores del análisis IA como los valores internos de la DB)
 _CATEGORIAS_LABEL = {
-    "infraestructura": "Infraestructura", "seguridad": "Seguridad",
-    "areas_verdes": "Áreas verdes",       "servicios": "Servicios",
-    "transporte": "Transporte",           "medio_ambiente": "Medio ambiente",
+    # Valores del análisis IA (los que devuelve categoria_detectada)
+    "riesgos":         "Riesgos",
+    "movilidad":       "Movilidad",
+    # Valores internos de la DB (por si acaso llegan directo)
+    "infraestructura": "Movilidad",
+    "seguridad":       "Movilidad",
+    "servicios":       "Movilidad",
+    "transporte":      "Movilidad",
+    "medio_ambiente":  "Riesgos",
+    "areas_verdes":    "Riesgos",
 }
 
 
@@ -532,7 +542,7 @@ def mostrar_resultado(paso, capturas, resultado):
     ia         = (resultado or {}).get("ia") or {}
     error      = (resultado or {}).get("error")
     prioridad  = ia.get("prioridad_asignada") or "media"
-    categoria  = ia.get("categoria_detectada") or "infraestructura"
+    categoria  = ia.get("categoria_detectada") or "movilidad"   # default neutral, nunca "infraestructura"
     tipo       = (ia.get("tipo_problema") or "N/D").replace("_", " ").capitalize()
     justific   = ia.get("justificacion") or "Análisis no disponible."
     prob       = int(ia.get("probabilidad_atencion") or 0)

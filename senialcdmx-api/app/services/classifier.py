@@ -19,25 +19,31 @@ logger = logging.getLogger(__name__)
 # Prompt para clasificación solo texto (Granite)
 CLASSIFICATION_PROMPT = """\
 Eres un clasificador de reportes ciudadanos para la Ciudad de México.
-Clasifica el siguiente reporte en UNA de estas dos categorías:
-- riesgos: inundaciones, encharcamientos, drenaje tapado, zonas de peligro por agua, \
-tiraderos clandestinos, áreas verdes, medio ambiente
-- movilidad: accidentes viales, infracciones, cruces peatonales peligrosos, baches, \
-semáforos, alumbrado, servicios públicos, infraestructura urbana
+Tu tarea es decidir a cuál de estas DOS categorías pertenece el reporte:
 
-Responde SOLO con una palabra: riesgos   o   movilidad
+- riesgos: reportes sobre MEDIO AMBIENTE y fenómenos naturales — inundaciones, \
+encharcamientos, drenaje tapado, zonas de peligro por agua, tiraderos clandestinos, \
+árboles caídos, áreas verdes, contaminación ambiental, socavones naturales.
+
+- movilidad: reportes sobre PROBLEMAS EN CALLES y vialidad — accidentes viales, \
+infracciones de tránsito, baches, semáforos descompuestos, cruces peatonales peligrosos, \
+alumbrado público, obras en vía pública, señalamiento vial.
+
+Regla clave: si el reporte menciona agua, árboles, basura o naturaleza → riesgos.
+Si menciona calles, vehículos, semáforos o infraestructura vial → movilidad.
+
+Responde ÚNICAMENTE con una palabra (riesgos o movilidad), sin explicaciones.
 
 Reporte: {description}
-"""
+Categoría:"""
 
 # Prompt para clasificación con imagen (Llama Vision)
 CLASSIFICATION_PROMPT_VISION = (
     "Eres un clasificador de reportes ciudadanos para la Ciudad de México. "
-    "Analiza la imagen adjunta y la descripción del reporte. "
-    "Clasifica en UNA de estas dos categorías: riesgos o movilidad. "
-    "- riesgos: inundaciones, encharcamientos, drenaje, zonas de peligro natural, medio ambiente. "
-    "- movilidad: accidentes viales, infracciones, cruces peligrosos, baches, servicios, infraestructura. "
-    "Responde SOLO con una palabra: riesgos   o   movilidad "
+    "Analiza la imagen y la descripción. Clasifica en UNA categoría: riesgos o movilidad. "
+    "- riesgos: medio ambiente, inundaciones, agua, árboles, tiraderos, contaminación. "
+    "- movilidad: problemas en calles, baches, semáforos, accidentes, señalamiento vial. "
+    "Responde SOLO con una palabra: riesgos o movilidad. "
     "Descripción: {description}"
 )
 
@@ -49,7 +55,7 @@ _model_vision: ModelInference | None = None
 
 
 def _get_model_text() -> ModelInference:
-    """ingleton de Llama 3.2 Vision para clasificación con texto."""
+    """Singleton de IBM Granite para clasificación solo-texto."""
     global _model_text
     if _model_text is None:
         credentials = Credentials(
@@ -57,7 +63,7 @@ def _get_model_text() -> ModelInference:
             api_key=settings.watsonx_api_key,
         )
         _model_text = ModelInference(
-            model_id="meta-llama/llama-3-2-11b-vision-instruct",
+            model_id="ibm/granite-3-8b-instruct",
             credentials=credentials,
             project_id=settings.watsonx_project_id,
             params={
@@ -155,22 +161,46 @@ def _classify_keywords(description: str) -> str:
     """
     Clasificación de emergencia por palabras clave cuando Watson x no está disponible.
     Siempre retorna 'riesgos' o 'movilidad' — nunca otro valor.
+
+    Regla: riesgos = medio ambiente / agua / naturaleza
+           movilidad = problemas en calles / vialidad / infraestructura vial
     """
     text = description.lower()
+
+    # Palabras clave con peso: tupla (keyword, peso)
     riesgos_kw = [
-        "inundación", "inundacion", "encharcamiento", "lluvia", "drenaje",
-        "desbordamiento", "agua", "presa", "tiradero", "basura", "peligro",
-        "zona de riesgo", "grieta", "hundimiento", "árbol", "arbol",
-        "verde", "medio ambiente", "contaminacion",
+        ("inundación", 3), ("inundacion", 3), ("encharcamiento", 3),
+        ("desbordamiento", 3), ("drenaje tapado", 2), ("drenaje", 1),
+        ("lluvia", 1), ("agua", 1), ("presa", 2),
+        ("tiradero", 2), ("basura", 1), ("residuos", 1),
+        ("contaminacion", 2), ("contaminación", 2), ("medio ambiente", 3),
+        ("árbol caído", 3), ("arbol caido", 3), ("árbol", 1), ("arbol", 1),
+        ("área verde", 2), ("area verde", 2), ("parque", 1),
+        ("zona de riesgo", 3), ("riesgo natural", 3),
+        ("grieta", 1), ("socavon", 2), ("socavón", 2),
     ]
     movilidad_kw = [
-        "accidente", "choque", "atropello", "bache", "semáforo", "semaforo",
-        "infracción", "infraccion", "cruce", "peatonal", "tráfico", "trafico",
-        "vialidad", "velocidad", "carro", "moto", "ciclista", "alumbrado",
-        "luminaria", "servicio", "obra", "calle", "avenida",
+        ("accidente", 3), ("choque", 3), ("atropello", 3),
+        ("bache", 3), ("hoyo en la calle", 3),
+        ("semáforo", 2), ("semaforo", 2), ("señal de tránsito", 2),
+        ("infracción", 2), ("infraccion", 2),
+        ("cruce peatonal", 3), ("paso peatonal", 3), ("peatonal", 2),
+        ("cruce", 2), ("intersección", 2), ("interseccion", 2),
+        ("tráfico", 1), ("trafico", 1), ("vialidad", 2),
+        ("velocidad", 1), ("carro", 1), ("moto", 1), ("ciclista", 1),
+        ("alumbrado", 2), ("luminaria", 2),
+        ("obra vial", 2), ("pavimento", 2), ("asfalto", 2),
+        # Frases de peligro vial — calle/cruce peligroso → movilidad
+        ("peligroso", 1), ("peligrosa", 1), ("peligro al cruzar", 3),
+        ("miedo al pasar", 3), ("miedo al cruzar", 3),
+        ("calle", 1), ("avenida", 1), ("boulevard", 1), ("crucero", 2),
     ]
-    riesgos_score   = sum(1 for kw in riesgos_kw   if kw in text)
-    movilidad_score = sum(1 for kw in movilidad_kw if kw in text)
 
-    # Empate o sin coincidencias → movilidad (más frecuente en reportes urbanos)
+    riesgos_score   = sum(peso for kw, peso in riesgos_kw   if kw in text)
+    movilidad_score = sum(peso for kw, peso in movilidad_kw if kw in text)
+
+    # Desempate: sin coincidencias en ninguna → movilidad
+    # (un reporte de "cruce peligroso" sin más contexto es vialidad)
+    if riesgos_score == 0 and movilidad_score == 0:
+        return "movilidad"
     return "riesgos" if riesgos_score > movilidad_score else "movilidad"

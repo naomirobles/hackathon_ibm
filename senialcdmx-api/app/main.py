@@ -76,7 +76,7 @@ async def create_report(
         latitud=payload.latitud if payload.latitud is not None else 0,
         longitud=payload.longitud if payload.longitud is not None else 0,
         # categoria NOT NULL — placeholder hasta que Watson x clasifique
-        categoria="infraestructura",
+        categoria="otro",
         estado="procesando",
     )
     db.add(reporte)
@@ -131,15 +131,24 @@ def get_report(report_id: str, db: Session = Depends(get_db)):
     )
 
 
-# Mapeo DB category → categoría de análisis espacial
+# Mapeo DB category → categoría de análisis (la que ve el frontend)
 _DB_TO_ANALYSIS = {
-    "medio_ambiente":  "riesgos",
-    "areas_verdes":    "riesgos",
-    "servicios":       "movilidad",
-    "infraestructura": "movilidad",
-    "transporte":      "movilidad",
-    "seguridad":       "movilidad",
+    "riesgo":    "riesgos",
+    "movilidad": "movilidad",
+    "otro":      "movilidad",
 }
+
+
+def _categoria_para_frontend(reporte) -> str:
+    """
+    Devuelve siempre 'riesgos' o 'movilidad'.
+    Prioriza el valor guardado por el análisis IA; si no existe, convierte la categoría DB.
+    """
+    proc = reporte.procesamiento
+    if proc and proc.categoria_detectada in ("riesgos", "movilidad"):
+        return proc.categoria_detectada
+    cat_db = str(reporte.categoria) if reporte.categoria else "otro"
+    return _DB_TO_ANALYSIS.get(cat_db, "movilidad")
 
 
 @app.get("/reports/{report_id}/maps")
@@ -163,12 +172,8 @@ def get_report_maps(report_id: str, db: Session = Depends(get_db)):
     if lat is None or lng is None:
         raise HTTPException(status_code=422, detail="Reporte sin coordenadas válidas")
 
-    # Determinar categoría de análisis
-    proc = reporte.procesamiento
-    analysis_cat = (proc.categoria_detectada if proc and proc.categoria_detectada in ("riesgos", "movilidad") else None)
-    if not analysis_cat:
-        cat_db = str(reporte.categoria) if reporte.categoria else "infraestructura"
-        analysis_cat = _DB_TO_ANALYSIS.get(cat_db, "movilidad")
+    # Determinar categoría de análisis — siempre "riesgos" | "movilidad"
+    analysis_cat = _categoria_para_frontend(reporte)
 
     from app.services.layer_fetcher import get_layers
     layers = get_layers(analysis_cat)
@@ -210,7 +215,7 @@ def list_reports(
             report_id=str(r.id),
             codigo=r.codigo,
             status=str(r.estado),
-            categoria=r.categoria,
+            categoria=_categoria_para_frontend(r),   # siempre "riesgos" | "movilidad"
             alcaldia=r.alcaldia,
             prioridad=r.procesamiento.prioridad_asignada if r.procesamiento else None,
             probabilidad_atencion=float(r.procesamiento.probabilidad_atencion)

@@ -13,20 +13,57 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ── Prompt extendido ──────────────────────────────────────────────────────────
 REPORT_PROMPT = """\
-Eres un analista de seguridad urbana de la Ciudad de México.
-Con base en el siguiente reporte ciudadano y los datos geoespaciales del entorno,
-genera un análisis breve con:
-1. Resumen del problema reportado
-2. Hallazgos relevantes del entorno (datos geoespaciales)
-3. Prioridad de atención: alta, media o baja — con justificación
+Eres un analista experto en seguridad urbana y gestión de riesgos de la Ciudad de México.
+Tu objetivo es generar un reporte técnico detallado basado en el reporte ciudadano y todos
+los datos geoespaciales disponibles.
 
-Sé conciso. Máximo 200 palabras.
+El reporte debe incluir obligatoriamente:
+1. **Resumen ejecutivo** del problema reportado
+2. **Análisis de contexto urbano** (ubicación, colonia, alcaldía, coordenadas)
+3. **Hallazgos geoespaciales detallados** (cada dato cuantitativo importa)
+4. **Evaluación del nivel de riesgo** con justificación técnica
+5. **Prioridad de atención**: alta, media o baja — con criterios objetivos
+6. **Propuestas de acción concretas** (mínimo 3, numeradas)
+7. **Probabilidad de recurrencia** del evento si no se atiende
 
-Reporte: {descripcion}
-Categoría: {categoria}
-Ubicación: {alcaldia}, {colonia}
-Hallazgos geoespaciales: {findings}
+Usa un tono técnico-institucional. Máximo 400 palabras.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATOS DEL REPORTE CIUDADANO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Código de reporte : {codigo}
+Tipo de problema  : {tipo_problema}
+Categoría         : {categoria}
+Descripción       : {descripcion}
+Descripción audio : {descripcion_audio}
+Fuente de entrada : {fuente_input}
+Tiene imagen      : {tiene_imagen}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+UBICACIÓN GEOGRÁFICA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Alcaldía          : {alcaldia}
+Colonia           : {colonia}
+Dirección aprox.  : {direccion_aprox}
+Coordenadas       : lat {latitud}, lng {longitud}
+Ciudad            : {ciudad}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MÉTRICAS DEL ANÁLISIS ESPACIAL (radio 500 m)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{metricas_detalle}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HALLAZGOS GEOESPACIALES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{findings}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAPAS GEOGRÁFICAS ACTIVADAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{capas_activadas}
 """
 
 PRIORITY_PATTERN = re.compile(
@@ -34,9 +71,9 @@ PRIORITY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 PRIORITY_KEYWORDS = {
-    "alta": ["alta", "urgente", "crítico", "crítica", "inmediata", "grave"],
-    "media": ["media", "moderada", "moderado"],
-    "baja": ["baja", "menor", "leve"],
+    "alta": ["alta", "urgente", "crítico", "crítica", "inmediata", "grave", "severo", "peligroso"],
+    "media": ["media", "moderada", "moderado", "importante"],
+    "baja": ["baja", "menor", "leve", "mínimo"],
 }
 
 
@@ -68,18 +105,17 @@ def _extract_actions(text: str) -> list[str]:
     capture = False
     for line in lines:
         line = line.strip()
-        if any(kw in line.lower() for kw in ["propuesta", "acción", "accion", "recomend", "medida"]):
+        if any(kw in line.lower() for kw in ["propuesta", "acción", "accion", "recomend", "medida", "acción"]):
             capture = True
             continue
-        if capture and line.startswith(("-", "•", "*", "·")) :
+        if capture and line.startswith(("-", "•", "*", "·")):
             actions.append(line.lstrip("-•*· "))
         elif capture and re.match(r"^\d+\.", line):
             actions.append(re.sub(r"^\d+\.\s*", "", line))
         elif capture and line == "":
-            # Dejar de capturar al encontrar línea vacía después de acciones
             if actions:
                 break
-    return actions[:5]  # máximo 5 propuestas
+    return actions[:6]  # máximo 6 propuestas
 
 
 def _get_model():
@@ -95,7 +131,7 @@ def _get_model():
         model_id="meta-llama/llama-3-2-11b-vision-instruct",
         api_client=client,
         params={
-            "max_new_tokens": 500,
+            "max_new_tokens": 900,
             "temperature": 0.3,
         },
     )
@@ -105,7 +141,103 @@ def _format_findings(layers_summary: dict) -> str:
     findings = layers_summary.get("findings", [])
     if not findings:
         return "Sin hallazgos geoespaciales relevantes."
-    return " ".join(findings)
+    return "\n".join(f"  • {f}" for f in findings)
+
+
+def _format_capas(layers_summary: dict) -> str:
+    capas = layers_summary.get("matched_layers", [])
+    if not capas:
+        return "Ninguna capa activada."
+    return "\n".join(f"  ✓ {c}" for c in capas)
+
+
+def _format_metricas_movilidad(metrics: dict) -> str:
+    inter = metrics.get("intersecciones_riesgo", [])
+    if isinstance(inter, list) and inter and isinstance(inter[0], dict):
+        inter_txt = "; ".join(
+            f"{i.get('calles','?')} [{i.get('nivel_riesgo','?').upper()}] "
+            f"({i.get('n_incidentes',0)} inc.)"
+            for i in inter[:5]
+        )
+    else:
+        inter_txt = ", ".join(str(i) for i in inter[:5]) if inter else "ninguna detectada"
+
+    return (
+        f"  • Hechos de tránsito (500 m)    : {metrics.get('n_hechos_transito', 0)}\n"
+        f"  • Incidentes C5 (500 m)         : {metrics.get('n_incidentes_c5', 0)}\n"
+        f"  • Infracciones en alcaldía      : {metrics.get('n_infracciones_alcaldia', 0)}\n"
+        f"  • Densidad de incidentes/km²    : {metrics.get('densidad_incidentes', 0.0):.2f}\n"
+        f"  • Tipo de incidente frecuente   : {metrics.get('tipo_incidente_frecuente', 'sin datos')}\n"
+        f"  • Intersecciones de riesgo      : {inter_txt}"
+    )
+
+
+def _format_metricas_riesgos(metrics: dict) -> str:
+    zona = "SÍ" if metrics.get("zona_riesgo_inundacion") else "NO"
+    deficit = "SÍ — cobertura insuficiente" if metrics.get("deficit_areas_verdes") else "NO"
+    cob = metrics.get("cobertura_areas_verdes_m2", 0.0)
+    return (
+        f"  • Zona de riesgo de inundación  : {zona}\n"
+        f"  • Nivel de riesgo hídrico       : {metrics.get('nivel_riesgo', 'ninguno').upper()}\n"
+        f"  • Presas cercanas               : {metrics.get('n_presas_cercanas', 0)}\n"
+        f"  • Puntos de captación pluvial   : {metrics.get('n_puntos_captacion', 0)}\n"
+        f"  • Tiraderos clandestinos        : {metrics.get('n_tiraderos', 0)}\n"
+        f"  • Cobertura de áreas verdes     : {cob:,.0f} m²\n"
+        f"  • Déficit de áreas verdes       : {deficit}"
+    )
+
+
+def _infer_tipo_problema(category: str, descripcion: str) -> str:
+    """Infiere el tipo específico de problema desde categoría + texto."""
+    text = descripcion.lower()
+    if category == "riesgos":
+        if any(k in text for k in ["inundación", "inundacion", "encharcamiento", "agua"]):
+            return "Inundación / encharcamiento"
+        if any(k in text for k in ["tiradero", "basura", "residuos"]):
+            return "Tiradero clandestino"
+        if any(k in text for k in ["drenaje", "alcantarilla"]):
+            return "Drenaje / alcantarillado"
+        return "Riesgo natural"
+    elif category == "movilidad":
+        if any(k in text for k in ["bache", "hoyo", "hundimiento"]):
+            return "Bache / deterioro del pavimento"
+        if any(k in text for k in ["accidente", "choque", "atropello"]):
+            return "Accidente vial"
+        if any(k in text for k in ["semáforo", "semaforo", "señal", "señalamiento"]):
+            return "Señalamiento vial deficiente"
+        if any(k in text for k in ["cruce", "peatonal", "paso"]):
+            return "Cruce peatonal inseguro"
+        return "Infraestructura vial"
+    return "Sin clasificar"
+
+
+def _build_prompt(report, metrics: dict, layers_summary: dict, category: str) -> str:
+    """Construye el prompt completo con TODA la información disponible."""
+    if category == "movilidad":
+        metricas_txt = _format_metricas_movilidad(metrics)
+    else:
+        metricas_txt = _format_metricas_riesgos(metrics)
+
+    tipo_problema = _infer_tipo_problema(category, report.descripcion)
+
+    return REPORT_PROMPT.format(
+        codigo=getattr(report, "codigo", "N/D"),
+        tipo_problema=tipo_problema,
+        categoria=category,
+        descripcion=report.descripcion,
+        descripcion_audio=getattr(report, "descripcion_audio", None) or "No disponible",
+        fuente_input=getattr(report, "fuente_input", "texto"),
+        tiene_imagen="Sí" if getattr(report, "tiene_imagen", False) else "No",
+        alcaldia=report.alcaldia or "No especificada",
+        colonia=report.colonia or "No especificada",
+        direccion_aprox=getattr(report, "direccion_aprox", None) or "No disponible",
+        latitud=float(report.latitud) if report.latitud else "No disponible",
+        longitud=float(report.longitud) if report.longitud else "No disponible",
+        ciudad=getattr(report, "ciudad", "CDMX"),
+        metricas_detalle=metricas_txt,
+        findings=_format_findings(layers_summary),
+        capas_activadas=_format_capas(layers_summary),
+    )
 
 
 async def generate_report(
@@ -119,24 +251,26 @@ async def generate_report(
     Llama a Watson x para generar el reporte final.
 
     Args:
-        report: instancia del modelo Report
-        metrics: métricas del análisis espacial
+        report       : instancia del modelo Report (con todos sus campos)
+        metrics      : métricas completas del análisis espacial
         layers_summary: dict con matched_layers y findings
-        category: "riesgos" | "movilidad"
+        category     : "riesgos" | "movilidad"
         interpretation: texto de interpretación manual (opcional, post-hackathon)
 
     Returns:
         ReportResult con conclusión, prioridad y acciones
     """
-    findings_text = interpretation or _format_findings(layers_summary)
+    # Si hay interpretación manual, enriquece los findings con ella
+    if interpretation:
+        enriched_summary = dict(layers_summary)
+        enriched_summary["findings"] = (
+            [f"[Interpretación manual] {interpretation}"]
+            + layers_summary.get("findings", [])
+        )
+    else:
+        enriched_summary = layers_summary
 
-    prompt = REPORT_PROMPT.format(
-        description=report.descripcion,
-        category=category,
-        alcaldia=report.alcaldia or "N/D",
-        colonia=report.colonia or "N/D",
-        findings=findings_text,
-    )
+    prompt = _build_prompt(report, metrics, enriched_summary, category)
 
     if not settings.watsonx_api_key:
         logger.warning("WATSONX_API_KEY no configurado — usando reporte de fallback")
@@ -159,38 +293,3 @@ async def generate_report(
     except Exception as e:
         logger.error("Error en Watson x generate_report: %s", e)
         return _fallback_report(report, metrics, layers_summary, category)
-
-
-def _fallback_report(report, metrics: dict, layers_summary: dict, category: str) -> ReportResult:
-    """Reporte de respaldo cuando Watson x no está disponible."""
-    findings = layers_summary.get("findings", [])
-    matched = layers_summary.get("matched_layers", [])
-
-    # Determinar prioridad por reglas simples
-    priority = "media"
-    if category == "riesgos":
-        nivel = metrics.get("nivel_riesgo", "ninguno")
-        if nivel == "alto":
-            priority = "alta"
-        elif nivel == "bajo" and metrics.get("n_tiraderos", 0) == 0:
-            priority = "baja"
-    elif category == "movilidad":
-        n = metrics.get("n_hechos_transito", 0) + metrics.get("n_incidentes_c5", 0)
-        if n >= 10:
-            priority = "alta"
-        elif n <= 2:
-            priority = "baja"
-
-    findings_str = " ".join(findings) if findings else "Sin hallazgos disponibles."
-    conclusion = (
-        f"Reporte ciudadano en {report.alcaldia or 'N/D'}, {report.colonia or 'N/D'}. "
-        f"Categoría: {category}. "
-        f"Hallazgos: {findings_str} "
-        f"Prioridad asignada: {priority}."
-    )
-
-    return ReportResult(
-        conclusion=conclusion,
-        priority=priority,
-        actions=[],
-    )
