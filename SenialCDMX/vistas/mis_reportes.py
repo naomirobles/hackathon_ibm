@@ -1,8 +1,7 @@
-"""Vista: listado de reportes del ciudadano con datos reales del backend."""
+"""Vista: listado de reportes del ciudadano con datos dummy."""
 from dash import html, dcc, Input, Output, callback
 from componentes.tablas import tabla_reportes
-from datos.api_client import list_reports, api_a_fila
-
+# from datos.api_client import list_reports, api_a_fila # Comentado si ya no se usa aquí temporalmente
 
 def layout_mis() -> html.Div:
     return html.Div(className="main", children=[
@@ -31,16 +30,82 @@ def layout_mis() -> html.Div:
     prevent_initial_call=True,
 )
 def cargar_mis_reportes(n):
-    reportes_api = list_reports(limit=50)
+    
+    # -------------------------------------------------------------
+    # DATOS DUMMY (MOCK)
+    # Comentamos la lógica real del backend temporalmente:
+    # reportes_api = list_reports(limit=50)
+    # if not reportes_api:
+    #     return html.Div([...])
+    # filas = [api_a_fila(r) for r in reportes_api]
+    # -------------------------------------------------------------
+    
+    # Definimos las filas manualmente. 
+    # NOTA: Ajusta las claves (id, fecha, asunto, etc.) a lo que espera tu 'tabla_reportes'.
+    # Datos dummy con 'probabilidad' (necesaria para la barra de progreso)
+    filas = [
+        {
+            "id": "REP-001", 
+            "fecha": "2026-04-09", 
+            "asunto": "Bache en carril central", 
+            "categoria": "infraestructura", 
+            "prioridad": "alta",
+            "status": "recibido",
+            "tipo": "Bacheo",
+            "descripcion": "Bache profundo que afecta la suspensión de los autos.",
+            "probabilidad": 0.95, # <-- Valor para progress_cell
+            "ubicacion": "Av. Insurgentes Sur 123"
+        },
+        {
+            "id": "REP-002", 
+            "fecha": "2026-04-08", 
+            "asunto": "Luminaria fundida", 
+            "categoria": "alumbrado", 
+            "prioridad": "media",
+            "status": "procesando",
+            "tipo": "Iluminación",
+            "descripcion": "Poste de luz sin servicio en calle oscura.",
+            "probabilidad": 0.82,
+            "ubicacion": "Calle Reforma 45"
+        },
+        {
+            "id": "REP-003", 
+            "fecha": "2026-04-05", 
+            "asunto": "Fuga de agua potable", 
+            "categoria": "agua", 
+            "prioridad": "urgente",
+            "status": "resuelto",
+            "tipo": "Fuga",
+            "descripcion": "Fuga de agua de gran magnitud en la banqueta.",
+            "probabilidad": 0.98,
+            "ubicacion": "Eje Central Lázaro Cárdenas"
+        },
+        {
+            "id": "REP-004", 
+            "fecha": "2026-04-01", 
+            "asunto": "Acumulación de basura", 
+            "categoria": "limpia", 
+            "prioridad": "baja",
+            "status": "rechazado",
+            "tipo": "Recolección",
+            "descripcion": "Bolsas de basura acumuladas en la esquina.",
+            "probabilidad": 0.45,
+            "ubicacion": "Colonia Condesa"
+        },
+        {
+            "id": "REP-005", 
+            "fecha": "2026-03-28", 
+            "asunto": "Semáforo descompuesto", 
+            "categoria": "vialidad", 
+            "prioridad": "alta",
+            "status": "resuelto",
+            "tipo": "Tránsito",
+            "descripcion": "Semáforo en mal estado genera riesgo de choque.",
+            "probabilidad": 0.88,
+            "ubicacion": "Intersección Av. Juárez y Balderas"
+        },
+    ]
 
-    if not reportes_api:
-        return html.Div([
-            html.Div("⚠", style={"fontSize": "24px", "marginBottom": "8px"}),
-            html.Div("No se encontraron reportes o el servidor no está disponible.",
-                     className="text-small"),
-        ], style={"textAlign": "center", "padding": "32px 0", "color": "var(--text3)"})
-
-    filas = [api_a_fila(r) for r in reportes_api]
     pendientes = [f for f in filas if f["status"] in ("procesando", "recibido")]
     procesados = [f for f in filas if f["status"] not in ("procesando", "recibido")]
 
