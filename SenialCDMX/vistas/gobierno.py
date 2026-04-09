@@ -1,74 +1,27 @@
 """Vista raíz del gobierno: dashboard, reportes y análisis."""
-from dash import html, dcc, Input, Output, callback
+from dash import html, dcc, Input, Output, State, callback
 from componentes.navegacion import navbar
 from componentes.cartas import stat_card, alert_box
 from componentes.tablas import tabla_gobierno
-from datos.simples import REPORTES, CATEGORIAS
+from datos.simples import CATEGORIAS
+from datos.api_client import list_reports, api_a_fila
 
 
-# Sub-vistas
+# Sub-vistas — shell vacío; los callbacks los rellenan con datos reales
 
 def _dashboard() -> html.Div:
-    altas  = sum(1 for r in REPORTES if r["prioridad"] == "alta")
-    medias = sum(1 for r in REPORTES if r["prioridad"] == "media")
-    bajas  = sum(1 for r in REPORTES if r["prioridad"] == "baja")
-    pendiente  = sum(1 for r in REPORTES if r["prioridad"] == "nula")
-    total  = len(REPORTES)
-
     return html.Div([
         html.Div([
             html.Div([
                 html.Div("Panel gubernamental", className="section-title"),
-                html.Div("CDMX · Secretaría de Obras y Servicios",
-                         className="section-sub"),
+                html.Div("CDMX · Secretaría de Obras y Servicios", className="section-sub"),
             ]),
             html.Span("Vista consolidada", className="badge badge-info"),
         ], className="section-header mb-20"),
-
-        # Estadísticas
-        html.Div([
-            stat_card("Total reportes",       str(total),  "+12 esta semana"),
-            stat_card("Prioridad alta",        str(altas),  "Atención inmediata"),
-            stat_card("En proceso",            str(medias), "Asignados"),
-            stat_card("Resueltos (30 días)",   "142",       "↑ 18% vs mes anterior"),
-        ], className="stat-grid"),
-
-        # Tabla de reportes recientes
-        html.Div(className="card mb-20", children=[
-            html.Div([
-                html.Div([
-                    html.Div("Reportes recientes", className="card-title"),
-                    html.Div("Últimas 24 horas · ordenados por prioridad",
-                             className="card-sub"),
-                ]),
-                html.Span("En vivo", className="badge badge-alta"),
-            ], style={"display": "flex", "justifyContent": "space-between",
-                      "alignItems": "flex-start", "marginBottom": "16px"}),
-            tabla_gobierno(sorted(REPORTES,
-                                  key=lambda r: {"alta": 0, "media": 1, "baja": 2, "pendiente": 3}
-                                  [r["prioridad"]])),
-        ]),
-
-        # Alertas operativas
-        html.Div(className="card", children=[
-            html.Div("Alertas operativas", className="card-title",
-                     style={"marginBottom": "16px"}),
-            alert_box(
-                f"Hay {altas} reportes de prioridad ALTA sin atender. "
-                "Se recomienda despachar brigadas de emergencia.",
-                "warn",
-            ),
-            alert_box(
-                "Zona Benito Juárez presenta concentración de reportes viales. "
-                "Considerar operativo de mantenimiento preventivo.",
-                "info",
-            ),
-            alert_box(
-                "142 reportes resueltos en los últimos 30 días. "
-                "Rendimiento 18% superior al mes anterior.",
-                "success",
-            ),
-        ]),
+        html.Div(id="gov-stats-grid",   className="stat-grid"),
+        html.Div(id="gov-tabla-recientes", className="card mb-20"),
+        html.Div(id="gov-alertas",      className="card"),
+        dcc.Interval(id="gov-interval", interval=800, max_intervals=1),
     ])
 
 
@@ -77,98 +30,150 @@ def _panel_reportes() -> html.Div:
         html.Div([
             html.Div([
                 html.Div("Todos los reportes", className="section-title"),
-                html.Div(f"{len(REPORTES)} reportes en el sistema",
-                         className="section-sub"),
+                html.Div(id="gov-reportes-sub", className="section-sub"),
             ]),
             html.Button("Exportar CSV", className="btn btn-outline btn-sm"),
         ], className="section-header mb-20"),
-
-        # Filtros rápidos
-        html.Div([
-            html.Span("Filtrar por prioridad:", className="text-muted",
-                      style={"marginRight": "8px"}),
-            html.Button("Todos",  className="btn btn-sm btn-primary",
-                        style={"marginRight": "4px"}),
-            html.Button("Alta",   className="btn btn-sm btn-outline",
-                        style={"marginRight": "4px"}),
-            html.Button("Media",  className="btn btn-sm btn-outline",
-                        style={"marginRight": "4px"}),
-            html.Button("Baja",   className="btn btn-sm btn-outline"),
-        ], style={"marginBottom": "16px", "display": "flex",
-                  "alignItems": "center", "flexWrap": "wrap", "gap": "4px"}),
-
-        html.Div(className="card", children=[
-            tabla_gobierno(REPORTES),
-        ]),
+        html.Div(id="gov-tabla-todos", className="card"),
     ])
 
 
 def _panel_analisis() -> html.Div:
-    # Conteo por categoría
-    conteo = {}
-    for r in REPORTES:
-        cat = CATEGORIAS.get(r["categoria"], {}).get("label", r["categoria"])
-        conteo[cat] = conteo.get(cat, 0) + 1
-
-    barras = []
-    max_val = max(conteo.values()) if conteo else 1
-    for cat, cnt in sorted(conteo.items(), key=lambda x: -x[1]):
-        pct = int(cnt / max_val * 100)
-        barras.append(html.Div([
-            html.Div(cat, style={"fontSize": "13px", "marginBottom": "4px",
-                                 "color": "var(--text2)"}),
-            html.Div([
-                html.Div(className="progress-fill fill-baja",
-                         style={"width": f"{pct}%", "height": "100%",
-                                "background": "var(--primary)"}),
-            ], className="progress-bar",
-               style={"height": "10px", "marginBottom": "4px"}),
-            html.Div(f"{cnt} reporte{'s' if cnt > 1 else ''}",
-                     className="text-small"),
-        ], style={"marginBottom": "16px"}))
-
     return html.Div([
         html.Div([
             html.Div("Análisis de reportes", className="section-title"),
-            html.Div("Distribución por categoría y tendencias",
-                     className="section-sub"),
+            html.Div("Distribución por categoría y tendencias", className="section-sub"),
         ], className="section-header mb-20"),
-
-        html.Div(className="grid-2", children=[
-            html.Div(className="card", children=[
-                html.Div("Reportes por categoría", className="card-title",
-                         style={"marginBottom": "20px"}),
-                *barras,
-            ]),
-
-            html.Div(className="card", children=[
-                html.Div("Distribución por prioridad", className="card-title",
-                         style={"marginBottom": "20px"}),
-                *[
-                    html.Div([
-                        html.Div([
-                            html.Span(label, style={"fontSize": "13px",
-                                                    "color": "var(--text2)"}),
-                            html.Span(f"{cnt} ({int(cnt/len(REPORTES)*100)}%)",
-                                      className="text-small"),
-                        ], style={"display": "flex", "justifyContent": "space-between",
-                                  "marginBottom": "4px"}),
-                        html.Div(html.Div(
-                            className=f"progress-fill {fill}",
-                            style={"width": f"{int(cnt/len(REPORTES)*100)}%",
-                                   "height": "100%"},
-                        ), className="progress-bar",
-                           style={"height": "10px", "marginBottom": "16px"}),
-                    ])
-                    for label, fill, cnt in [
-                        ("Alta",  "fill-alta",  sum(1 for r in REPORTES if r["prioridad"]=="alta")),
-                        ("Media", "fill-media", sum(1 for r in REPORTES if r["prioridad"]=="media")),
-                        ("Baja",  "fill-baja",  sum(1 for r in REPORTES if r["prioridad"]=="baja")),
-                    ]
-                ],
-            ]),
-        ]),
+        html.Div(id="gov-analisis-contenido", className="grid-2"),
     ])
+
+
+# ── Callback: carga datos reales al montar el dashboard ──────────────────────
+
+@callback(
+    Output("gov-stats-grid",       "children"),
+    Output("gov-tabla-recientes",  "children"),
+    Output("gov-alertas",          "children"),
+    Output("gov-tabla-todos",      "children"),
+    Output("gov-reportes-sub",     "children"),
+    Output("gov-analisis-contenido","children"),
+    Input("gov-interval",          "n_intervals"),
+    prevent_initial_call=True,
+)
+def cargar_datos_gobierno(n):
+    reportes_api = list_reports(limit=100)
+    filas = [api_a_fila(r) for r in reportes_api]
+
+    total    = len(filas)
+    altas    = sum(1 for r in filas if r["prioridad"] == "alta")
+    medias   = sum(1 for r in filas if r["prioridad"] == "media")
+    resueltos = sum(1 for r in reportes_api if r.get("status") == "resuelto")
+
+    # ── Stats ─────────────────────────────────────────────────────────────────
+    stats = html.Div([
+        stat_card("Total reportes",     str(total),    "En el sistema"),
+        stat_card("Prioridad alta",     str(altas),    "Atención inmediata"),
+        stat_card("En proceso",         str(medias),   "Asignados"),
+        stat_card("Resueltos",          str(resueltos), "Estado resuelto"),
+    ], className="stat-grid")
+
+    # ── Tabla recientes (ordenada por prioridad) ──────────────────────────────
+    _orden = {"alta": 0, "media": 1, "baja": 2, "pendiente": 3}
+    ordenados = sorted(filas, key=lambda r: _orden.get(r["prioridad"], 9))[:20]
+
+    tabla_rec = [
+        html.Div([
+            html.Div([
+                html.Div("Reportes recientes", className="card-title"),
+                html.Div("Ordenados por prioridad", className="card-sub"),
+            ]),
+            html.Span("En vivo", className="badge badge-alta"),
+        ], style={"display": "flex", "justifyContent": "space-between",
+                  "alignItems": "flex-start", "marginBottom": "16px"}),
+        tabla_gobierno(ordenados) if ordenados
+            else html.Div("Sin reportes.", className="text-small"),
+    ]
+
+    # ── Alertas ───────────────────────────────────────────────────────────────
+    alertas = [
+        html.Div("Alertas operativas", className="card-title",
+                 style={"marginBottom": "16px"}),
+        *(
+            [alert_box(
+                f"Hay {altas} reportes de prioridad ALTA sin atender. "
+                "Se recomienda despachar brigadas de emergencia.", "warn",
+            )] if altas > 0 else []
+        ),
+        alert_box(
+            f"{total} reportes recibidos en total. "
+            f"{resueltos} resueltos hasta la fecha.", "info",
+        ),
+    ]
+
+    # ── Tabla todos ───────────────────────────────────────────────────────────
+    tabla_todos = tabla_gobierno(filas) if filas \
+        else html.Div("Sin reportes registrados.", className="text-small")
+
+    sub_txt = f"{total} reportes en el sistema"
+
+    # ── Análisis: barras por categoría y prioridad ────────────────────────────
+    conteo_cat: dict = {}
+    for r in filas:
+        cat = CATEGORIAS.get(r["categoria"], {}).get("label", r["categoria"])
+        conteo_cat[cat] = conteo_cat.get(cat, 0) + 1
+
+    max_cat = max(conteo_cat.values(), default=1)
+    barras = [
+        html.Div([
+            html.Div(cat, style={"fontSize": "13px", "marginBottom": "4px",
+                                 "color": "var(--text2)"}),
+            html.Div(html.Div(
+                className="progress-fill fill-baja",
+                style={"width": f"{int(cnt/max_cat*100)}%", "height": "100%",
+                       "background": "var(--primary)"},
+            ), className="progress-bar", style={"height": "10px", "marginBottom": "4px"}),
+            html.Div(f"{cnt} reporte{'s' if cnt > 1 else ''}", className="text-small"),
+        ], style={"marginBottom": "16px"})
+        for cat, cnt in sorted(conteo_cat.items(), key=lambda x: -x[1])
+    ]
+
+    dist_pri = [
+        ("Alta",  "fill-alta",  altas),
+        ("Media", "fill-media", medias),
+        ("Baja",  "fill-baja",  sum(1 for r in filas if r["prioridad"] == "baja")),
+    ]
+    barras_pri = [
+        html.Div([
+            html.Div([
+                html.Span(label, style={"fontSize": "13px", "color": "var(--text2)"}),
+                html.Span(
+                    f"{cnt} ({int(cnt/total*100) if total else 0}%)",
+                    className="text-small",
+                ),
+            ], style={"display": "flex", "justifyContent": "space-between",
+                      "marginBottom": "4px"}),
+            html.Div(html.Div(
+                className=f"progress-fill {fill}",
+                style={"width": f"{int(cnt/total*100) if total else 0}%", "height": "100%"},
+            ), className="progress-bar", style={"height": "10px", "marginBottom": "16px"}),
+        ])
+        for label, fill, cnt in dist_pri
+    ]
+
+    analisis = [
+        html.Div(className="card", children=[
+            html.Div("Reportes por categoría", className="card-title",
+                     style={"marginBottom": "20px"}),
+            *(barras or [html.Div("Sin datos.", className="text-small")]),
+        ]),
+        html.Div(className="card", children=[
+            html.Div("Distribución por prioridad", className="card-title",
+                     style={"marginBottom": "20px"}),
+            *barras_pri,
+        ]),
+    ]
+
+    return stats, tabla_rec, alertas, tabla_todos, sub_txt, analisis
 
 
 # Layout principal gobierno 

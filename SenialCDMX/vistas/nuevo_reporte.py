@@ -365,4 +365,6 @@ html.Div(id="form-step-2", style={"display": "none"}, children=[
         dcc.Store(id="store-ai-result"),
         dcc.Download(id="download-reporte-pdf"),
         dcc.Store(id="store-paso-actual", data=1),
+        # Intervalo de polling al backend (5s, máx 5 min)
+        dcc.Interval(id="poll-interval", interval=5000, max_intervals=60, disabled=True),
     ])

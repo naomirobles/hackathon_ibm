@@ -5,6 +5,8 @@ from componentes.navegacion import navbar
 from extra.ibm_speech import transcribe_audio
 from vistas.nuevo_reporte import layout_nuevo
 from vistas.mis_reportes import layout_mis
+from datos.api_client import submit_report, get_report, list_reports, api_a_fila
+from componentes.tablas import tabla_reportes
 
 
 def _pdf_literal(text: str) -> str:
@@ -230,24 +232,24 @@ def transcribir_audio_upload(upload_contents, mic_store, upload_filename, mic_st
     Output("form-step-3", "style"),
     Output("form-step-4", "style"),
     Output("store-paso-actual", "data"),
-    Input("tab-nuevo",        "n_clicks"),
-    Input("btn-nuevo-reporte", "n_clicks", allow_optional=True),
-    Input("btn-paso-2",        "n_clicks"),
-    Input("btn-paso-1-back",   "n_clicks"),
-    Input("btn-paso-3",        "n_clicks"),
-    Input("ai-interval",       "n_intervals"),
-    State("store-paso-actual", "data"),
+    Input("tab-nuevo",              "n_clicks"),
+    Input("btn-nuevo-reporte",      "n_clicks", allow_optional=True),
+    Input("btn-paso-2",             "n_clicks"),
+    Input("btn-paso-1-back",        "n_clicks"),
+    Input("btn-paso-3",             "n_clicks"),
+    Input("store-report-resultado", "data"),
+    State("store-paso-actual",      "data"),
     prevent_initial_call=True,
 )
-def navegar_pasos(n_tab_nuevo, n_btn_nuevo, n2, n1back, n3, n_intervals, paso):
+def navegar_pasos(n_tab_nuevo, n_btn_nuevo, n2, n1back, n3, resultado, paso):
     show, hide = {}, {"display": "none"}
     t = ctx.triggered_id
     if t in {"tab-nuevo", "btn-nuevo-reporte"}:
         paso = 1
-    if   t == "btn-paso-2"    and paso == 1: paso = 2
-    elif t == "btn-paso-1-back" and paso == 2: paso = 1
-    elif t == "btn-paso-3"    and paso == 2: paso = 3
-    elif t == "ai-interval"   and (n_intervals or 0) >= 7 and paso == 3: paso = 4
+    if   t == "btn-paso-2"             and paso == 1: paso = 2
+    elif t == "btn-paso-1-back"        and paso == 2: paso = 1
+    elif t == "btn-paso-3"             and paso == 2: paso = 3
+    elif t == "store-report-resultado" and resultado  and paso == 3: paso = 4
     return (
         show if paso == 1 else hide,
         show if paso == 2 else hide,
@@ -255,6 +257,72 @@ def navegar_pasos(n_tab_nuevo, n_btn_nuevo, n2, n1back, n3, n_intervals, paso):
         show if paso == 4 else hide,
         paso,
     )
+
+
+# ── Enviar reporte al backend ─────────────────────────────────────────────────
+
+@callback(
+    Output("store-report-id", "data"),
+    Input("btn-paso-3", "n_clicks"),
+    State("descripcion-texto", "value"),
+    State("audio-transcript",  "children"),
+    State("lat-input",         "value"),
+    State("lon-input",         "value"),
+    State("dir-input",         "value"),
+    prevent_initial_call=True,
+)
+def enviar_reporte_api(n_clicks, desc_texto, desc_audio, lat, lon, direccion):
+    if not n_clicks:
+        return dash.no_update
+    descripcion = (str(desc_audio or "").strip() or str(desc_texto or "").strip())
+    if not descripcion:
+        return {"error": "Sin descripción"}
+    try:
+        result = submit_report({
+            "descripcion":   descripcion,
+            "latitud":       float(lat)  if lat  else None,
+            "longitud":      float(lon)  if lon  else None,
+            "direccion_aprox": direccion or None,
+        })
+        return result   # {report_id, codigo, status}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ── Habilitar/deshabilitar poll-interval según el paso ───────────────────────
+
+@callback(
+    Output("poll-interval", "disabled"),
+    Input("store-paso-actual", "data"),
+)
+def toggle_poll(paso):
+    return paso != 3
+
+
+# ── Polling: consultar GET /reports/{id} cada 5 s ───────────────────────────
+
+@callback(
+    Output("store-report-resultado", "data"),
+    Input("poll-interval",    "n_intervals"),
+    State("store-report-id",  "data"),
+    State("store-paso-actual","data"),
+    prevent_initial_call=True,
+)
+def poll_reporte(n_intervals, report_id_data, paso):
+    if paso != 3 or not report_id_data:
+        return dash.no_update
+    if report_id_data.get("error"):
+        return report_id_data           # propagar el error al resultado
+    report_id = report_id_data.get("report_id")
+    if not report_id:
+        return dash.no_update
+    try:
+        result = get_report(report_id)
+        if result.get("status") in ("procesado", "cancelado"):
+            return result
+    except Exception:
+        pass
+    return dash.no_update
 
 
 @callback(
@@ -346,67 +414,94 @@ def actualizar_step_indicator(paso):
 
 # ── Resultado de IA ───────────────────────────────────────────────────────────
 
+_BADGE_PRIORIDAD = {"alta": "badge-alta", "media": "badge-media", "baja": "badge-baja"}
+_CATEGORIAS_LABEL = {
+    "infraestructura": "Infraestructura", "seguridad": "Seguridad",
+    "areas_verdes": "Áreas verdes",       "servicios": "Servicios",
+    "transporte": "Transporte",           "medio_ambiente": "Medio ambiente",
+}
+
+
 @callback(
-    Output("result-card", "children"),
+    Output("result-card",     "children"),
     Output("store-ai-result", "data"),
-    Input("store-paso-actual", "data"),
-    State("store-capturas",    "data"),
+    Input("store-paso-actual",       "data"),
+    State("store-capturas",          "data"),
+    State("store-report-resultado",  "data"),
     prevent_initial_call=True,
 )
-def mostrar_resultado(paso, capturas):
+def mostrar_resultado(paso, capturas, resultado):
     if paso != 4:
         return [], None
-    import random
-    rpt_id = f"RPT-{random.randint(100, 999)}"
+
     n_cap = len(capturas) if capturas else 0
+
+    # ── Extraer datos de la API ───────────────────────────────────────────────
+    ia         = (resultado or {}).get("ia") or {}
+    error      = (resultado or {}).get("error")
+    prioridad  = ia.get("prioridad_asignada") or "media"
+    categoria  = ia.get("categoria_detectada") or "infraestructura"
+    tipo       = (ia.get("tipo_problema") or "N/D").replace("_", " ").capitalize()
+    justific   = ia.get("justificacion") or "Análisis no disponible."
+    prob       = int(ia.get("probabilidad_atencion") or 0)
+    recom      = ia.get("recomendacion_gobierno") or ""
+    confianza  = f"{int(ia.get('confianza_pct') or 0)}%"
+    codigo     = (resultado or {}).get("codigo") or "RPT-????"
+
     result_data = {
-        "report_id": rpt_id,
-        "capturas": n_cap,
-        "categoria": "Infraestructura",
-        "tipo": "Bache vial",
-        "prioridad": "Alta",
-        "confianza": "89%",
-        "descripcion": (
-            "El reporte describe una afectacion vial de alta peligrosidad. "
-            "La zona registra densidad vehicular elevada."
-        ),
-        "recomendacion": (
-            "Se recomienda enviar brigada de mantenimiento en las proximas 48 horas."
-        ),
+        "report_id":    codigo,
+        "capturas":     n_cap,
+        "categoria":    _CATEGORIAS_LABEL.get(categoria, categoria),
+        "tipo":         tipo,
+        "prioridad":    prioridad.capitalize(),
+        "confianza":    confianza,
+        "descripcion":  justific,
+        "recomendacion": recom,
     }
+
+    badge_pri = _BADGE_PRIORIDAD.get(prioridad, "badge-media")
+
     return [
+        # Cabecera resultado
         html.Div([
             html.Div([
-                html.Div("Análisis completado",
-                         style={"fontSize": "20px", "fontWeight": "600", "marginBottom": "8px"}),
+                html.Div(
+                    "⚠️ Error al procesar" if error else "Análisis completado",
+                    style={"fontSize": "20px", "fontWeight": "600", "marginBottom": "8px"},
+                ),
                 html.Div([
-                    html.Span("Prioridad alta",  className="badge badge-alta"),
-                    html.Span("Infraestructura", className="badge badge-cat"),
-                    html.Span("Bache vial",      className="badge badge-info"),
+                    html.Span(f"Prioridad {prioridad}", className=f"badge {badge_pri}"),
+                    html.Span(_CATEGORIAS_LABEL.get(categoria, categoria), className="badge badge-cat"),
+                    html.Span(tipo, className="badge badge-info"),
                 ], style={"display": "flex", "gap": "8px", "flexWrap": "wrap", "marginBottom": "8px"}),
-                html.Div(f"ID: {rpt_id} · Confianza IA: 89% · {n_cap} captura{'s' if n_cap != 1 else ''} procesada{'s' if n_cap != 1 else ''}",
-                         className="text-small"),
+                html.Div(
+                    f"ID: {codigo} · Confianza IA: {confianza} · "
+                    f"{n_cap} captura{'s' if n_cap != 1 else ''} adjunta{'s' if n_cap != 1 else ''}",
+                    className="text-small",
+                ),
             ]),
             html.Div([
-                html.Div("87%", className="priority-pct alta"),
+                html.Div(f"{prob}%", className=f"priority-pct {prioridad}"),
                 html.Div("prob. de atención", className="text-small"),
             ], style={"textAlign": "right"}),
         ], className="result-header"),
 
-        html.Div([html.Strong("Análisis del sistema: "),
-                  "El reporte describe una afectación vial de alta peligrosidad. "
-                  "La zona registra densidad vehicular elevada."],
+        # Análisis
+        html.Div([html.Strong("Análisis del sistema: "), justific],
                  className="ai-analysis-box"),
 
+        # Info grid
         html.Div([
-            html.Div([html.Div("Categoría", className="info-item-label"),
-                      html.Div("Infraestructura", className="info-item-value")], className="info-item"),
-            html.Div([html.Div("Tipo", className="info-item-label"),
-                      html.Div("Bache vial", className="info-item-value")], className="info-item"),
-            html.Div([html.Div("Confianza IA", className="info-item-label"),
-                      html.Div("89%", className="info-item-value")], className="info-item"),
+            html.Div([html.Div("Categoría",   className="info-item-label"),
+                      html.Div(_CATEGORIAS_LABEL.get(categoria, categoria),
+                               className="info-item-value")], className="info-item"),
+            html.Div([html.Div("Tipo",        className="info-item-label"),
+                      html.Div(tipo,          className="info-item-value")], className="info-item"),
+            html.Div([html.Div("Confianza IA",className="info-item-label"),
+                      html.Div(confianza,     className="info-item-value")], className="info-item"),
         ], className="info-grid"),
 
+        # Capturas
         *([html.Div([
             html.Div("Evidencia fotográfica procesada",
                      style={"fontSize": "12px", "fontWeight": "600", "color": "var(--text2)",
@@ -420,21 +515,24 @@ def mostrar_resultado(paso, capturas):
             ], className="capturas-grid"),
         ], style={"marginBottom": "16px"})] if capturas else []),
 
-        html.Div([
+        # Recomendación
+        *([html.Div([
             html.Span("✓", style={"fontSize": "14px", "flexShrink": "0"}),
-            html.Div([html.Strong("Recomendación: "),
-                      "Se recomienda enviar brigada de mantenimiento en las próximas 48 horas."]),
-        ], className="alert alert-success"),
+            html.Div([html.Strong("Recomendación: "), recom]),
+        ], className="alert alert-success")] if recom else []),
 
+        # PDF
         html.Div([
             html.Div("Documento técnico generado",
                      style={"fontSize": "13px", "fontWeight": "500",
                             "color": "var(--primary)", "marginBottom": "4px"}),
-            html.Div(f"{rpt_id}_reporte_tecnico.pdf", className="text-small",
+            html.Div(f"{codigo}_reporte_tecnico.pdf", className="text-small",
                      style={"marginBottom": "10px"}),
-            html.Button("↓ Descargar PDF", id="btn-descargar-pdf", className="btn btn-sm btn-outline",
+            html.Button("↓ Descargar PDF", id="btn-descargar-pdf",
+                        className="btn btn-sm btn-outline",
                         style={"color": "var(--primary)", "borderColor": "var(--primary)"}),
-        ], style={"background": "var(--primary-light)", "border": "1px solid rgba(15,143,74,0.2)",
+        ], style={"background": "var(--primary-light)",
+                  "border": "1px solid rgba(15,143,74,0.2)",
                   "borderRadius": "var(--radius-sm)", "padding": "16px", "marginBottom": "16px"}),
 
         html.Div([
