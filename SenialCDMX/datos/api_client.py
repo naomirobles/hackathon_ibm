@@ -33,6 +33,19 @@ def list_reports(limit: int = 50) -> list[dict]:
         return []
 
 
+def get_report_maps(report_id: str) -> dict:
+    """
+    GET /reports/{id}/maps — devuelve los mapas folium como HTML strings.
+    Respuesta: {"category": "riesgos"|"movilidad", "maps": {"atlas": "<html>...", ...}}
+    """
+    try:
+        r = requests.get(f"{API_URL}/reports/{report_id}/maps", timeout=60)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        return {"error": str(e), "maps": {}}
+
+
 def api_a_fila(r: dict) -> dict:
     """Convierte un item de GET /reports al formato que esperan las tablas."""
     fecha = (r.get("created_at") or "")[:10] or "N/D"

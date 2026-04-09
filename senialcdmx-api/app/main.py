@@ -131,6 +131,65 @@ def get_report(report_id: str, db: Session = Depends(get_db)):
     )
 
 
+# Mapeo DB category → categoría de análisis espacial
+_DB_TO_ANALYSIS = {
+    "medio_ambiente":  "riesgos",
+    "areas_verdes":    "riesgos",
+    "servicios":       "movilidad",
+    "infraestructura": "movilidad",
+    "transporte":      "movilidad",
+    "seguridad":       "movilidad",
+}
+
+
+@app.get("/reports/{report_id}/maps")
+def get_report_maps(report_id: str, db: Session = Depends(get_db)):
+    """
+    Genera los mapas folium del análisis espacial para un reporte.
+    Devuelve HTML strings listos para renderizar en un <iframe srcDoc>.
+    La categoría se mapea siempre a 'riesgos' o 'movilidad'.
+    """
+    try:
+        rid = uuid.UUID(report_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="report_id no es un UUID válido")
+
+    reporte = db.query(models.Reporte).filter(models.Reporte.id == rid).first()
+    if not reporte:
+        raise HTTPException(status_code=404, detail="Reporte no encontrado")
+
+    lat = float(reporte.latitud)  if reporte.latitud  and float(reporte.latitud)  != 0 else None
+    lng = float(reporte.longitud) if reporte.longitud and float(reporte.longitud) != 0 else None
+    if lat is None or lng is None:
+        raise HTTPException(status_code=422, detail="Reporte sin coordenadas válidas")
+
+    # Determinar categoría de análisis
+    proc = reporte.procesamiento
+    analysis_cat = (proc.categoria_detectada if proc and proc.categoria_detectada in ("riesgos", "movilidad") else None)
+    if not analysis_cat:
+        cat_db = str(reporte.categoria) if reporte.categoria else "infraestructura"
+        analysis_cat = _DB_TO_ANALYSIS.get(cat_db, "movilidad")
+
+    from app.services.layer_fetcher import get_layers
+    layers = get_layers(analysis_cat)
+
+    try:
+        if analysis_cat == "riesgos":
+            from app.services.analysis.riesgos import mapas_riesgos
+            mapas = mapas_riesgos(lat, lng, layers)
+        else:
+            from app.services.analysis.movilidad import mapas_movilidad
+            mapas = mapas_movilidad(lat, lng, layers, reporte.alcaldia or "")
+
+        return {
+            "category": analysis_cat,
+            "maps": {k: m._repr_html_() for k, m in mapas.items()},
+        }
+    except Exception as exc:
+        logger.error("Error generando mapas para reporte %s: %s", report_id, exc)
+        raise HTTPException(status_code=500, detail=f"Error generando mapas: {exc}")
+
+
 @app.get("/reports", response_model=list[schemas.ReportListItem])
 def list_reports(
     limit: int = 20,

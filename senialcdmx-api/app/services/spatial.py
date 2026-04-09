@@ -41,5 +41,5 @@ def spatial_analysis(
     elif category == "movilidad":
         return analyze_movilidad(lat, lng, layers, alcaldia=alcaldia)
     else:
-        logger.warning("Categoría desconocida '%s' — sin análisis espacial", category)
-        return {}, {"matched_layers": [], "findings": [f"Categoría '{category}' sin análisis espacial configurado."]}
+        logger.warning("Categoría '%s' no reconocida — forzando análisis de movilidad", category)
+        return analyze_movilidad(lat, lng, layers, alcaldia=alcaldia)

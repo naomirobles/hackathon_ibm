@@ -13,6 +13,7 @@ def stores() -> list:
         # Flujo de nuevo reporte
         dcc.Store(id="store-report-id"),        # {report_id, codigo, status} del POST
         dcc.Store(id="store-report-resultado"), # resultado final del GET (con ia)
+        dcc.Store(id="store-report-maps"),      # mapas folium {category, maps:{...}}
     ]
 
 

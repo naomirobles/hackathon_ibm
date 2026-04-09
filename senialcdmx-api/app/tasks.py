@@ -19,11 +19,11 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
-# Mapeo categoría interna Watson x → ENUM categoria_reporte de la DB
+# Mapeo análisis → ENUM categoria_reporte de la DB
+# Solo existen dos categorías de análisis válidas.
 _CATEGORIA_DB = {
     "riesgos":   "medio_ambiente",
     "movilidad": "transporte",
-    "otro":      "servicios",
 }
 
 # Prioridad → probabilidad de atención estimada
@@ -70,7 +70,18 @@ async def run_pipeline(report_id: uuid.UUID, db: Session) -> None:
 
         # 2. Clasificar descripción con Watson x
         category = await classify(reporte.descripcion)
-        reporte.categoria = _CATEGORIA_DB.get(category, "infraestructura")
+
+        # Garantizar que el análisis espacial siempre tenga riesgos o movilidad
+        if category not in ("riesgos", "movilidad"):
+            text = reporte.descripcion.lower()
+            movilidad_kw = [
+                "bache", "accidente", "infraccion", "semaforo", "transito",
+                "vialidad", "cruce", "calle", "avenida", "choque", "atropello",
+            ]
+            category = "movilidad" if any(k in text for k in movilidad_kw) else "riesgos"
+            logger.info("Categoría 'otro' mapeada a '%s' por palabras clave", category)
+
+        reporte.categoria = _CATEGORIA_DB.get(category, "medio_ambiente")
         db.commit()
         logger.info("Reporte %s clasificado como: %s", report_id, category)
 

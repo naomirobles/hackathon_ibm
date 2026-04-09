@@ -5,7 +5,7 @@ from componentes.navegacion import navbar
 from extra.ibm_speech import transcribe_audio
 from vistas.nuevo_reporte import layout_nuevo
 from vistas.mis_reportes import layout_mis
-from datos.api_client import submit_report, get_report, list_reports, api_a_fila
+from datos.api_client import submit_report, get_report, get_report_maps, list_reports, api_a_fila
 from componentes.tablas import tabla_reportes
 
 
@@ -414,6 +414,98 @@ def actualizar_step_indicator(paso):
 
 # ── Resultado de IA ───────────────────────────────────────────────────────────
 
+# ── Cargar mapas folium cuando el reporte termina de procesarse ───────────────
+
+_TABS_RIESGOS = {
+    "atlas":          ("🌊 Atlas de Riesgo Hídrico",
+                       "Polígonos del Atlas de Riesgo de Inundaciones y Niveles de Inundación. "
+                       "Color: intensidad del riesgo (rojo oscuro = Muy Alto)."),
+    "infraestructura":("🏗️ Infraestructura",
+                       "Tiraderos clandestinos (morado), captación pluvial (azul) y áreas verdes (verde) en 500 m."),
+    "general":        ("🗺️ Vista general",
+                       "Todas las capas de riesgo consolidadas en el área de análisis."),
+}
+_TABS_MOVILIDAD = {
+    "heatmap":         ("🔥 Mapa de calor",
+                        "Densidad de hechos de tránsito e incidentes C5. Rojo oscuro = mayor concentración."),
+    "puntos":          ("📍 Incidentes individuales",
+                        "Cada punto es un evento registrado. Rojo = hecho de tránsito. Morado = incidente C5."),
+    "intersecciones":  ("🔀 Red vial e intersecciones",
+                        "Red vial + intersecciones detectadas. Cruces coloreados por nivel de riesgo (radio 80 m)."),
+}
+
+
+@callback(
+    Output("store-report-maps",  "data"),
+    Input("store-paso-actual",   "data"),
+    State("store-report-id",     "data"),
+    prevent_initial_call=True,
+)
+def cargar_mapas(paso, report_id_data):
+    """Cuando el usuario llega al paso 4, solicita los mapas al backend."""
+    if paso != 4:
+        return dash.no_update
+    report_id = (report_id_data or {}).get("report_id")
+    if not report_id:
+        return {}
+    return get_report_maps(report_id)   # puede tardar 10-30s
+
+
+@callback(
+    Output("mapas-seccion", "children"),
+    Input("store-report-maps", "data"),
+    prevent_initial_call=True,
+)
+def mostrar_mapas(maps_data):
+    """Rellena la sección de mapas cuando el store se actualiza."""
+    if not maps_data or maps_data.get("error"):
+        error = (maps_data or {}).get("error", "")
+        return html.Div(
+            f"⚠️ No se pudieron cargar los mapas. {error}",
+            className="text-small",
+            style={"color": "var(--text3)", "padding": "8px 0"},
+        )
+
+    category = maps_data.get("category", "movilidad")
+    maps     = maps_data.get("maps", {})
+    tabs_def = _TABS_RIESGOS if category == "riesgos" else _TABS_MOVILIDAD
+
+    tabs = []
+    for key, (label, caption) in tabs_def.items():
+        html_str = maps.get(key, "")
+        tabs.append(dcc.Tab(
+            label=label,
+            style={"fontSize": "13px", "padding": "8px 12px"},
+            selected_style={"fontSize": "13px", "padding": "8px 12px",
+                            "borderTop": "2px solid var(--primary)", "fontWeight": "600"},
+            children=[
+                html.Div(caption, className="text-small",
+                         style={"color": "var(--text3)", "margin": "8px 0 4px"}),
+                html.Iframe(
+                    srcDoc=html_str,
+                    style={"width": "100%", "height": "420px",
+                           "border": "none", "borderRadius": "var(--radius-sm)"},
+                ),
+            ] if html_str else [html.Div("Sin datos para esta capa.", className="text-small")],
+        ))
+
+    cat_label = "Gestión de riesgos" if category == "riesgos" else "Movilidad e infraestructura"
+    return [
+        html.Hr(style={"margin": "20px 0 16px"}),
+        html.Div([
+            html.Div("Análisis espacial", className="card-title",
+                     style={"marginBottom": "4px"}),
+            html.Div(
+                f"Categoría: {cat_label} · Radio de análisis: 500 m · Datos abiertos CDMX",
+                className="text-small", style={"color": "var(--text3)", "marginBottom": "12px"},
+            ),
+        ]),
+        dcc.Tabs(tabs, style={"marginBottom": "0"}),
+    ]
+
+
+# ── Resultado real de IA ──────────────────────────────────────────────────────
+
 _BADGE_PRIORIDAD = {"alta": "badge-alta", "media": "badge-media", "baja": "badge-baja"}
 _CATEGORIAS_LABEL = {
     "infraestructura": "Infraestructura", "seguridad": "Seguridad",
@@ -500,6 +592,17 @@ def mostrar_resultado(paso, capturas, resultado):
             html.Div([html.Div("Confianza IA",className="info-item-label"),
                       html.Div(confianza,     className="info-item-value")], className="info-item"),
         ], className="info-grid"),
+
+        # ── Mapas de análisis espacial (se rellenan por callback separado) ─────
+        html.Div([
+            html.Hr(style={"margin": "20px 0 16px"}),
+            html.Div(
+                "⏳ Generando mapas de análisis espacial…",
+                className="text-small",
+                style={"color": "var(--text3)", "fontStyle": "italic", "textAlign": "center",
+                       "padding": "12px 0"},
+            ),
+        ], id="mapas-seccion"),
 
         # Capturas
         *([html.Div([

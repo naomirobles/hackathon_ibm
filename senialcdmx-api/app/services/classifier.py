@@ -4,7 +4,7 @@ Clasificación de reportes ciudadanos con IBM Watson x.
 - Sin imagen: modelo Granite (texto) con generate_text()
 - Con imagen: modelo Llama 3.2 Vision con chat() + image_url (igual que test.py)
 
-Devuelve "riesgos" | "movilidad" | "otro"
+Devuelve SIEMPRE "riesgos" | "movilidad" — nunca otro valor.
 """
 import logging
 import re
@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 # Prompt para clasificación solo texto (Granite)
 CLASSIFICATION_PROMPT = """\
 Eres un clasificador de reportes ciudadanos para la Ciudad de México.
-Clasifica el siguiente reporte en UNA de estas categorías:
-- riesgos: inundaciones, encharcamientos, drenaje, zonas de peligro natural
-- movilidad: accidentes viales, infracciones, cruces peligrosos, baches
-- otro: cualquier otra cosa
+Clasifica el siguiente reporte en UNA de estas dos categorías:
+- riesgos: inundaciones, encharcamientos, drenaje tapado, zonas de peligro por agua, \
+tiraderos clandestinos, áreas verdes, medio ambiente
+- movilidad: accidentes viales, infracciones, cruces peatonales peligrosos, baches, \
+semáforos, alumbrado, servicios públicos, infraestructura urbana
 
-Responde SOLO con la categoría en minúsculas, sin explicación.
+Responde SOLO con una palabra: riesgos   o   movilidad
 
 Reporte: {description}
 """
@@ -33,15 +34,14 @@ Reporte: {description}
 CLASSIFICATION_PROMPT_VISION = (
     "Eres un clasificador de reportes ciudadanos para la Ciudad de México. "
     "Analiza la imagen adjunta y la descripción del reporte. "
-    "Clasifica en UNA de estas categorías: riesgos, movilidad, otro. "
-    "- riesgos: inundaciones, encharcamientos, drenaje, zonas de peligro natural. "
-    "- movilidad: accidentes viales, infracciones, cruces peligrosos, baches. "
-    "- otro: cualquier otra cosa. "
-    "Responde SOLO con la categoría en minúsculas, sin explicación. "
+    "Clasifica en UNA de estas dos categorías: riesgos o movilidad. "
+    "- riesgos: inundaciones, encharcamientos, drenaje, zonas de peligro natural, medio ambiente. "
+    "- movilidad: accidentes viales, infracciones, cruces peligrosos, baches, servicios, infraestructura. "
+    "Responde SOLO con una palabra: riesgos   o   movilidad "
     "Descripción: {description}"
 )
 
-VALID_CATEGORIES = {"riesgos", "movilidad", "otro"}
+VALID_CATEGORIES = {"riesgos", "movilidad"}
 
 # Singletons separados por modelo
 _model_text: ModelInference | None = None
@@ -110,7 +110,7 @@ async def classify(description: str, image_base64: str | None = None) -> str:
     Clasifica la descripción del reporte.
     Si se proporciona image_base64, usa Llama Vision con model.chat().
     Si no hay imagen, usa Granite con model.generate_text().
-    Retorna "riesgos" | "movilidad" | "otro".
+    Retorna SIEMPRE "riesgos" | "movilidad".
     """
     if not settings.watsonx_api_key:
         logger.warning("WATSONX_API_KEY no configurado — usando clasificación por palabras clave")
@@ -152,23 +152,25 @@ async def classify(description: str, image_base64: str | None = None) -> str:
 
 
 def _classify_keywords(description: str) -> str:
-    """Clasificación de emergencia por palabras clave cuando Watson x no está disponible."""
+    """
+    Clasificación de emergencia por palabras clave cuando Watson x no está disponible.
+    Siempre retorna 'riesgos' o 'movilidad' — nunca otro valor.
+    """
     text = description.lower()
     riesgos_kw = [
         "inundación", "inundacion", "encharcamiento", "lluvia", "drenaje",
         "desbordamiento", "agua", "presa", "tiradero", "basura", "peligro",
-        "zona de riesgo", "grieta", "hundimiento",
+        "zona de riesgo", "grieta", "hundimiento", "árbol", "arbol",
+        "verde", "medio ambiente", "contaminacion",
     ]
     movilidad_kw = [
         "accidente", "choque", "atropello", "bache", "semáforo", "semaforo",
         "infracción", "infraccion", "cruce", "peatonal", "tráfico", "trafico",
-        "vialidad", "velocidad", "carro", "moto", "ciclista",
+        "vialidad", "velocidad", "carro", "moto", "ciclista", "alumbrado",
+        "luminaria", "servicio", "obra", "calle", "avenida",
     ]
-    riesgos_score = sum(1 for kw in riesgos_kw if kw in text)
+    riesgos_score   = sum(1 for kw in riesgos_kw   if kw in text)
     movilidad_score = sum(1 for kw in movilidad_kw if kw in text)
 
-    if riesgos_score > movilidad_score:
-        return "riesgos"
-    if movilidad_score > riesgos_score:
-        return "movilidad"
-    return "otro"
+    # Empate o sin coincidencias → movilidad (más frecuente en reportes urbanos)
+    return "riesgos" if riesgos_score > movilidad_score else "movilidad"
