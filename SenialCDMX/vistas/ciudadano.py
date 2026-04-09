@@ -8,6 +8,10 @@ from vistas.mis_reportes import layout_mis
 from datos.api_client import submit_report, get_report, get_report_maps, list_reports, api_a_fila
 from componentes.tablas import tabla_reportes
 
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
 
 def _pdf_literal(text: str) -> str:
     clean = text.encode("ascii", "ignore").decode("ascii")
@@ -15,42 +19,78 @@ def _pdf_literal(text: str) -> str:
     return f"({clean})"
 
 
-def _build_simple_pdf(lines: list[str]) -> bytes:
-    text_lines = [line for line in lines if line]
-    if not text_lines:
-        text_lines = ["SeñalCDMX"]
+def build_styled_pdf(reporte):
+    from io import BytesIO
+    buffer = BytesIO()
 
-    content_parts = ["BT", "/F1 11 Tf", "50 800 Td", "14 TL", f"{_pdf_literal(text_lines[0])} Tj"]
-    for line in text_lines[1:]:
-        content_parts.extend(["T*", f"{_pdf_literal(line)} Tj"])
-    content_parts.append("ET")
-    content_stream = "\n".join(content_parts).encode("ascii")
+    doc = SimpleDocTemplate(buffer)
 
-    objects = [
-        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
-        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
-        b"5 0 obj << /Length " + str(len(content_stream)).encode("ascii") + b" >> stream\n" + content_stream + b"\nendstream endobj\n",
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # COLORES
+    PRIMARY = colors.HexColor("#0f8f4a")   # verde app
+    LIGHT   = colors.HexColor("#e8f5ee")
+
+    # LOGO 
+    try:
+        logo = Image("assets/logo.png", width=3*cm, height=3*cm)
+    except:
+        logo = Paragraph("SEÑAL CDMX", styles["Title"])
+
+    # HEADER
+    header = Table([
+        [logo, Paragraph("<b>Reporte Técnico</b><br/>Sistema SeñalCDMX", styles["Title"])]
+    ], colWidths=[4*cm, 12*cm])
+
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,-1), LIGHT),
+        ("BOX", (0,0), (-1,-1), 1, PRIMARY),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("LEFTPADDING", (0,0), (-1,-1), 10),
+        ("RIGHTPADDING", (0,0), (-1,-1), 10),
+        ("TOPPADDING", (0,0), (-1,-1), 10),
+        ("BOTTOMPADDING", (0,0), (-1,-1), 10),
+    ]))
+
+    elements.append(header)
+    elements.append(Spacer(1, 12))
+
+    # INFORMACIÓN GENERAL
+    data = [
+        ["ID", reporte.get("report_id", "")],
+        ["Prioridad", reporte.get("prioridad", "")],
+        ["Categoría", reporte.get("categoria", "")],
+        ["Tipo", reporte.get("tipo", "")],
+        ["Confianza", reporte.get("confianza", "")],
+        ["Capturas", str(reporte.get("capturas", 0))],
     ]
 
-    pdf = bytearray(b"%PDF-1.4\n")
-    offsets = [0]
-    for obj in objects:
-        offsets.append(len(pdf))
-        pdf.extend(obj)
+    table = Table(data, colWidths=[5*cm, 10*cm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (0,-1), LIGHT),
+        ("TEXTCOLOR", (0,0), (0,-1), PRIMARY),
+        ("GRID", (0,0), (-1,-1), 0.5, colors.grey),
+    ]))
 
-    xref_pos = len(pdf)
-    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
-    pdf.extend(b"0000000000 65535 f \n")
-    for offset in offsets[1:]:
-        pdf.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-    pdf.extend(
-        f"trailer << /Root 1 0 R /Size {len(objects) + 1} >>\n"
-        f"startxref\n{xref_pos}\n%%EOF\n".encode("ascii")
-    )
-    return bytes(pdf)
+    elements.append(Paragraph("<b>Información General</b>", styles["Heading2"]))
+    elements.append(table)
+    elements.append(Spacer(1, 12))
 
+    # ANÁLISIS 
+    elements.append(Paragraph("<b>Análisis del sistema</b>", styles["Heading2"]))
+    elements.append(Paragraph(reporte.get("descripcion", ""), styles["BodyText"]))
+    elements.append(Spacer(1, 12))
+
+    # RECOMENDACIÓN 
+    elements.append(Paragraph("<b>Recomendación</b>", styles["Heading2"]))
+    elements.append(Paragraph(reporte.get("recomendacion", ""), styles["BodyText"]))
+
+    doc.build(elements)
+    pdf = buffer.getvalue()
+    buffer.close()
+
+    return pdf
 
 def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     return html.Div([
@@ -657,7 +697,6 @@ def mostrar_resultado(paso, capturas, resultado):
                   "paddingTop": "16px", "borderTop": "1px solid var(--border)"}),
     ], result_data
 
-
 @callback(
     Output("download-reporte-pdf", "data"),
     Input("btn-descargar-pdf", "n_clicks"),
@@ -683,7 +722,7 @@ def descargar_reporte_pdf(n_clicks, reporte):
         "Recomendacion:",
         reporte.get("recomendacion", ""),
     ]
-    pdf_bytes = _build_simple_pdf(lines)
+    pdf_bytes = build_styled_pdf(reporte)
     filename = f"{reporte.get('report_id', 'reporte')}_reporte_tecnico.pdf"
 
     return dcc.send_bytes(lambda buffer: buffer.write(pdf_bytes), filename)
