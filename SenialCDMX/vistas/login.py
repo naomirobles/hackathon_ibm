@@ -72,54 +72,37 @@ def layout_login() -> html.Div:
                 html.Div([
                     html.Div([
                         html.Label("Nombre completo", className="form-label"),
-                        dcc.Input(
-                            id="reg-nombre",
-                            placeholder="Ana García López",
-                            className="form-input",
-                            style={"width": "100%"}
-                        ),
+                        dcc.Input(placeholder="Ana García López",
+                                  className="form-input",
+                                  style={"width": "100%"}),
                     ], className="form-group"),
                     html.Div([
                         html.Label("Teléfono", className="form-label"),
-                        dcc.Input(
-                            id="reg-telefono",
-                            placeholder="55 1234 5678",
-                            className="form-input",
-                            style={"width": "100%"}
-                        ),
+                        dcc.Input(placeholder="55 1234 5678",
+                                  className="form-input",
+                                  style={"width": "100%"}),
                     ], className="form-group"),
                 ], className="grid-2"),
 
                 html.Div([
                     html.Label("Dirección", className="form-label"),
-                    dcc.Input(
-                        id="reg-direccion",
-                        placeholder="Av. Insurgentes 400, Col. Narvarte",
-                        className="form-input",
-                        style={"width": "100%"}
-                    ),
+                    dcc.Input(placeholder="Av. Insurgentes 400, Col. Narvarte",
+                              className="form-input",
+                              style={"width": "100%"}),
                 ], className="form-group"),
 
                 html.Div([
                     html.Label("Correo electrónico", className="form-label"),
-                    dcc.Input(
-                        id="reg-email",
-                        type="email",
-                        placeholder="tu@correo.mx",
-                        className="form-input",
-                        style={"width": "100%"}
-                    ),
+                    dcc.Input(type="email", placeholder="tu@correo.mx",
+                              className="form-input",
+                              style={"width": "100%"}),
                 ], className="form-group"),
 
                 html.Div([
                     html.Label("Contraseña", className="form-label"),
-                    dcc.Input(
-                        id="reg-pass",
-                        type="password",
-                        placeholder="Mínimo 8 caracteres",
-                        className="form-input",
-                        style={"width": "100%"}
-                    ),
+                    dcc.Input(type="password", placeholder="Mínimo 8 caracteres",
+                              className="form-input",
+                              style={"width": "100%"}),
                 ], className="form-group"),
 
                 html.Button(

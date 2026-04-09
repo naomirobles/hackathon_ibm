@@ -23,8 +23,8 @@ genera un análisis breve con:
 
 Sé conciso. Máximo 200 palabras.
 
-Reporte: {description}
-Categoría: {category}
+Reporte: {descripcion}
+Categoría: {categoria}
 Ubicación: {alcaldia}, {colonia}
 Hallazgos geoespaciales: {findings}
 """
@@ -92,7 +92,7 @@ def _get_model():
     )
     client = APIClient(credentials=credentials, project_id=settings.watsonx_project_id)
     return ModelInference(
-        model_id="ibm/granite-3-8b-instruct",
+        model_id="ibm/granite-3-1-8b-base",
         api_client=client,
         params={
             "max_new_tokens": 500,
@@ -131,10 +131,10 @@ async def generate_report(
     findings_text = interpretation or _format_findings(layers_summary)
 
     prompt = REPORT_PROMPT.format(
-        description=report.description,
+        description=report.descripcion,
         category=category,
-        alcaldia=report.alcaldia,
-        colonia=report.colonia,
+        alcaldia=report.alcaldia or "N/D",
+        colonia=report.colonia or "N/D",
         findings=findings_text,
     )
 
@@ -183,7 +183,7 @@ def _fallback_report(report, metrics: dict, layers_summary: dict, category: str)
 
     findings_str = " ".join(findings) if findings else "Sin hallazgos disponibles."
     conclusion = (
-        f"Reporte ciudadano en {report.alcaldia}, {report.colonia}. "
+        f"Reporte ciudadano en {report.alcaldia or 'N/D'}, {report.colonia or 'N/D'}. "
         f"Categoría: {category}. "
         f"Hallazgos: {findings_str} "
         f"Prioridad asignada: {priority}."
