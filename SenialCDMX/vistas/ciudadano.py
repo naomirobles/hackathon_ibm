@@ -76,10 +76,10 @@ def layout_ciudadano(usuario: str = "Ana García") -> html.Div:
     State("panel-ciudadano-mis", "style"),
     prevent_initial_call=True,
 )
-def switch_panel(n_nuevo, n_mis, n_ir_nuevo):
+def switch_panel(n_nuevo, n_mis, n_ir_nuevo, n_ver_mis, style_nuevo, style_mis):
     show, hide = {}, {"display": "none"}
     active, normal = "nav-tab active", "nav-tab"
-    if ctx.triggered_id == "tab-mis":
+    if ctx.triggered_id in {"tab-mis", "btn-ver-mis"}:
         return hide, show, normal, active
     return show, hide, active, normal
 
