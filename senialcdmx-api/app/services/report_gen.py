@@ -92,7 +92,7 @@ def _get_model():
     )
     client = APIClient(credentials=credentials, project_id=settings.watsonx_project_id)
     return ModelInference(
-        model_id="ibm/granite-3-1-8b-base",
+        model_id="meta-llama/llama-3-2-11b-vision-instruct",
         api_client=client,
         params={
             "max_new_tokens": 500,

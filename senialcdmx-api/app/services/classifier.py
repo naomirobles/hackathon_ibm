@@ -57,7 +57,7 @@ def _get_model_text() -> ModelInference:
             api_key=settings.watsonx_api_key,
         )
         _model_text = ModelInference(
-            model_id="ibm/granite-3-1-8b-base",
+            model_id="meta-llama/llama-3-2-11b-vision-instruct",
             credentials=credentials,
             project_id=settings.watsonx_project_id,
             params={
