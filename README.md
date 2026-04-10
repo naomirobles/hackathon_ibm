@@ -435,17 +435,6 @@ Este proyecto representó la integración de múltiples tecnologías en condicio
 
 ---
 
-## Equipo
-
-| Nombre | Rol |
-|---|---|
-| **Rodrigo Hernández** | Backend, arquitectura de API, pipeline IA |
-| **Fernanda Castillo** | Frontend Dash, integración IBM Speech to Text |
-| **Diego Morales** | Análisis geoespacial, datos abiertos CDMX |
-| **Valeria Ruiz** | Diseño UX, prototipado, presentación ejecutiva |
-
----
-
 ## Licencia
 
 Este proyecto fue desarrollado en el contexto del IBM AI Hackathon CDMX 2025. El código fuente se distribuye bajo la licencia **MIT**.
